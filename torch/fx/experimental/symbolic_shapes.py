@@ -2269,6 +2269,7 @@ class StatelessSymbolicContext(SymbolicContext, Generic[_P1, _T1]):
     shape_ids: dict[int, str | None] | None = None
     # Maps dimension index to (min, max) bounds for unbacked dimensions.
     unbacked_bounds: dict[int, tuple[int | None, int | None]] | None = None
+    do_not_specialize_zero_one: DimList[bool] = None  # type: ignore[assignment]
     # TODO: add storage offset and stride symbolic_context
 
     def __post_init__(self) -> None:
@@ -2291,6 +2292,10 @@ class StatelessSymbolicContext(SymbolicContext, Generic[_P1, _T1]):
         if self.constraint_strides is None:
             object.__setattr__(
                 self, "constraint_strides", [None] * len(self.dynamic_sizes)
+            )
+        if self.do_not_specialize_zero_one is None:
+            object.__setattr__(
+                self, "do_not_specialize_zero_one", [False] * len(self.dynamic_sizes)
             )
         if not all(
             stride in (DimDynamic.INFER_STRIDE, DimDynamic.DYNAMIC, DimDynamic.DUCK)
@@ -4709,7 +4714,10 @@ class ShapeEnv:
                 TensorPropertySource(source, TensorProperty.SIZE, i),
                 dynamic_dims[i],
                 constraint_dims[i],
-                do_not_specialize_zero_one=config.backed_size_oblivious,
+                do_not_specialize_zero_one=(
+                    config.backed_size_oblivious
+                    or symbolic_context.do_not_specialize_zero_one[i]  # type: ignore[attr-defined]
+                ),
                 symbolic_context=symbolic_context,
             )
             if (
@@ -5647,8 +5655,11 @@ class ShapeEnv:
 
             if isinstance(val, int):
                 if positive:
-                    # Add assertions for the newly created symbols
-                    self._add_assertion(sympy_expr > 1)
+                    if do_not_specialize_zero_one:
+                        self._add_assertion(sympy_expr >= 0)
+                    else:
+                        # Add assertions for the newly created symbols
+                        self._add_assertion(sympy_expr > 1)
 
                     # Apply default range, which assumes not zero-one
                     self.var_to_range[sympy_expr] = self._default_value_range(
