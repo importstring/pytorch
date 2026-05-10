@@ -1385,6 +1385,7 @@ class TestInductorDynamic(TestCase):
 
             self.assertEqual(actual, expected)
 
+
 instantiate_device_type_tests(TestInductorDynamic, globals(), allow_xpu=True)
 
 if __name__ == "__main__":
