@@ -45,7 +45,8 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM, IS_FBCODE, IS_LINUX, IS_WINDOWS, IS_MACOS, MACOS_VERSION, TEST_SCIPY,
     torch_to_numpy_dtype_dict, numpy_to_torch_dtype, TEST_WITH_ASAN,
     GRADCHECK_NONDET_TOL, slowTest, TEST_WITH_SLOW,
-    TEST_WITH_TORCHINDUCTOR, skipIfNoTritonDSL, skipIfNoCuteDSL, skipIfRocm
+    TEST_WITH_TORCHINDUCTOR, skipIfNoTritonDSL, skipIfNoCuteDSL, skipIfRocm,
+    NoncontiguousType,
 )
 from torch.testing._utils import wrapper_set_seed
 
@@ -12561,6 +12562,7 @@ def sample_inputs_abs(op_info, device, dtype, requires_grad, op_kwargs=None, **k
             requires_grad=requires_grad,
         ))
 
+
 # Operator database (sorted alphabetically)
 op_db: list[OpInfo] = [
     UnaryUfuncInfo('abs',
@@ -16210,6 +16212,13 @@ op_db: list[OpInfo] = [
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out_warning', device_type="cpu"),
                # RuntimeError: out_invstd.dim() == 1 && out_invstd.is_contiguous() && out_invstd.sizes()[0]
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type="cuda"),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
                # Problem with _get_numerical_jacobian
                # IndexError: tuple index out of range
                DecorateInfo(unittest.skip("Skipped!"), 'TestFwdGradients', 'test_forward_mode_AD'),
@@ -16226,8 +16235,7 @@ op_db: list[OpInfo] = [
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type='mps', dtypes=(torch.float32,)),
                # AssertionError: The values for attribute 'shape' do not match: torch.Size([5, 5, 5]) != torch.Size([5, 5, 6]).
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out_warning', device_type='mps'),
-           )
-           ),
+           )),
     OpInfo('_native_batch_norm_legit',
            aten_name='_native_batch_norm_legit',
            dtypes=floating_types_and(torch.float16, torch.bfloat16),
@@ -16244,6 +16252,13 @@ op_db: list[OpInfo] = [
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out_warning', device_type="cpu"),
                # RuntimeError: out_invstd.dim() == 1 && out_invstd.is_contiguous() && out_invstd.sizes()[0]
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type="cuda"),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
                # Problem with _get_numerical_jacobian
                # IndexError: tuple index out of range
                DecorateInfo(unittest.skip("Skipped!"), 'TestFwdGradients', 'test_forward_mode_AD'),
@@ -16260,8 +16275,7 @@ op_db: list[OpInfo] = [
                # FIXME: AssertionError: The values for attribute 'shape' do not match
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type='mps'),
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out_warning', device_type='mps'),
-           )
-           ),
+           )),
     OpInfo('_batch_norm_with_update',
            op=torch.ops.aten._batch_norm_with_update,
            aten_name='_batch_norm_with_update',
@@ -16298,8 +16312,14 @@ op_db: list[OpInfo] = [
                # the OpInfo: {torch.uint8, torch.bool, torch.int8, torch.int16,
                # torch.int32}.
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_dtypes', device_type='mps'),
-           )
-           ),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
+           )),
     OpInfo('nn.functional.cosine_similarity',
            aten_name="cosine_similarity",
            dtypes=floating_types_and(torch.half, torch.bfloat16),
@@ -17429,9 +17449,18 @@ op_db: list[OpInfo] = [
            error_inputs_func=error_inputs_avg_pool2d,
            sample_inputs_func=sample_inputs_avgpool2d,
            skips=(
-               DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type='cuda'),
                # AssertionError: Scalars are not equal!
+               DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type='cuda'),
+               # Exception('Unsupported memory format. Supports only ChannelsLast3d, Contiguous')
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out', device_type='mps'),
+               # Exception('Tensor-likes are not close! Mismatched elements: 243/243 (100.0%)')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                dtypes=(torch.float32,),
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
            )),
     OpInfo('nn.functional.fractional_max_pool2d',
            supports_autograd=True,
@@ -17568,7 +17597,16 @@ op_db: list[OpInfo] = [
            # TODO: investigate nondeterminism
            gradcheck_nondet_tol=GRADCHECK_NONDET_TOL,
            error_inputs_func=error_inputs_max_pool3d,
-           sample_inputs_func=sample_inputs_max_pool),
+           sample_inputs_func=sample_inputs_max_pool,
+           skips=(
+               # Exception('Unsupported memory format. Supports only ChannelsLast3d, Contiguous')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='cpu',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
+           )),
     OpInfo('nn.functional.max_unpool1d',
            aten_name='max_unpool1d',
            supports_autograd=True,
@@ -17624,6 +17662,21 @@ op_db: list[OpInfo] = [
            sample_inputs_func=sample_inputs_max_unpool,
            error_inputs_func=error_inputs_max_unpool,
            skips=(
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   dtypes=(torch.float32,),
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
                # Gradients are tested in `variant_test_name=grad` below.
                # We skip tests here because there is non-determinism in backward
                # with gather, when there are writes into the same memory location,
@@ -17652,7 +17705,24 @@ op_db: list[OpInfo] = [
            dtypesIfMPS=floating_types_and(
                torch.float16, torch.bfloat16, torch.int16, torch.int32, torch.int64, torch.uint8, torch.bool, torch.int8
            ),
-           sample_inputs_func=sample_inputs_max_unpool_grad),
+           sample_inputs_func=sample_inputs_max_unpool_grad,
+           skips=(
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   dtypes=(torch.float32,),
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
+           )),
     OpInfo('nn.functional.max_unpool3d',
            aten_name='max_unpool3d',
            # Runs very slowly on slow gradcheck - alternatively reduce input sizes
@@ -17668,6 +17738,21 @@ op_db: list[OpInfo] = [
            sample_inputs_func=sample_inputs_max_unpool,
            error_inputs_func=error_inputs_max_unpool,
            skips=(
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   dtypes=(torch.float32,),
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
                # Gradients are tested in `variant_test_name=grad` below.
                # We skip tests here because there is non-determinism in backward
                # with gather, when there are writes into the same memory location,
@@ -17695,6 +17780,21 @@ op_db: list[OpInfo] = [
            ),
            sample_inputs_func=sample_inputs_max_unpool_grad,
            skips=(
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   dtypes=(torch.float32,),
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST_SLICED)),
                # https://github.com/pytorch/pytorch/issues/184463
                DecorateInfo(unittest.skip("Flaky in CI"),
                             'TestSingleDimStrategies', 'test_single_dim_strategy'),
@@ -17720,6 +17820,8 @@ op_db: list[OpInfo] = [
                # RuntimeError: MPS device does not support linear for non-float inputs
                DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_dtypes', device_type='mps'),
                DecorateInfo(unittest.expectedFailure, 'TestCommon', device_type='mps', dtypes=(torch.int64,)),
+               # RuntimeError: Failed assertion `Error: MLIR pass manager failed'
+               DecorateInfo(unittest.skip("Skipped!"), 'TestCommon', device_type='mps', dtypes=(torch.complex64, torch.float32)),
                # https://github.com/pytorch/pytorch/issues/156514
                DecorateInfo(unittest.skip, "TestInductorOpInfo", "test_comprehensive", device_type="cuda", dtypes=(torch.float16,)),
            ),
@@ -18420,6 +18522,13 @@ op_db: list[OpInfo] = [
            skips=(
                # see https://github.com/pytorch/pytorch/issues/71286
                DecorateInfo(unittest.expectedFailure, 'TestNNCOpInfo', 'test_nnc_correctness'),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
                DecorateInfo(unittest.skip('Skipped!'), 'TestNNCOpInfo', 'test_nnc_correctness',
                             device_type='cpu', dtypes=(torch.bfloat16, torch.float16)),
                DecorateInfo(toleranceOverride({torch.float32: tol(atol=5e-05, rtol=1e-05)}),
@@ -20135,6 +20244,20 @@ op_db: list[OpInfo] = [
                # RuntimeError: view size is not compatible with input tensor's size and stride
                # (at least one dimension spans across two contiguous subspaces). Use .reshape(...) instead.
                DecorateInfo(unittest.expectedFailure, "TestMeta", "test_dispatch_symbolic_meta_outplace_all_strides"),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.SLICED),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.SLICED),
            )),
     OpInfo('view_as',
            op=lambda x, other: x.view_as(other),
@@ -21642,6 +21765,22 @@ op_db: list[OpInfo] = [
            decorators=(
                # RuntimeError: view size is not compatible with input tensor's size and stride
                DecorateInfo(unittest.expectedFailure, "TestMeta", "test_dispatch_symbolic_meta_outplace_all_strides"),
+           ),
+           skips=(
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='cpu',
+                   active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.SLICED),
+               # Exception('view size is not compatible with input tensor's size and stride')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.SLICED),
            )),
     ShapeFuncInfo('tile',
                   ref=np.tile,
@@ -22104,7 +22243,15 @@ op_db: list[OpInfo] = [
            skips=(
                # RuntimeError: input->type()->kind() == TypeKind::OptionalTypeINTERNAL ASSERT FAILED
                # at "../torch/csrc/jit/passes/utils/check_alias_annotation.cpp":270, please report a bug to PyTorch.
-               DecorateInfo(unittest.expectedFailure, "TestJit", "test_variant_consistency_jit"),)),
+               DecorateInfo(unittest.expectedFailure, "TestJit", "test_variant_consistency_jit"),
+               # Exception('Scalars are not close! Expected 4.962062358856201 but got nan.')
+               DecorateInfo(
+                   unittest.expectedFailure,
+                   'TestCommon',
+                   'test_noncontiguous_samples',
+                   device_type='mps',
+                   active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.SLICED),
+            )),
     OpInfo(
         "nn.functional.l1_loss",
         ref=loss_reference_reduction_wrapper(lambda input, target: np.abs(input - target)),
@@ -22991,10 +23138,14 @@ op_db: list[OpInfo] = [
                 'TestReductions',
                 'test_ref_small_input',
                 device_type='xpu',
-                dtypes=floating_types_and(
-                    torch.int64, torch.int8, torch.int16, torch.int32, torch.float16
-                ),
-            ),
+                dtypes=floating_types_and(torch.int64, torch.int8, torch.int16, torch.int32, torch.float16)),
+            # Exception('view size is not compatible with input tensor's size and stride')
+            DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST, NoncontiguousType.CHANNELS_LAST_SLICED)),
         ),
     ),
     ReductionOpInfo(
@@ -23011,10 +23162,14 @@ op_db: list[OpInfo] = [
                 'TestReductions',
                 'test_ref_small_input',
                 device_type='xpu',
-                dtypes=floating_types_and(
-                    torch.int64, torch.int8, torch.int16, torch.int32, torch.float16
-                ),
-            ),
+                dtypes=floating_types_and(torch.int64, torch.int8, torch.int16, torch.int32, torch.float16)),
+            # Exception('view size is not compatible with input tensor's size and stride')
+            DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') in (NoncontiguousType.SLICED, NoncontiguousType.CHANNELS_LAST, NoncontiguousType.CHANNELS_LAST_SLICED)),
         ),
     ),
     ReductionOpInfo(
@@ -23451,6 +23606,22 @@ op_db: list[OpInfo] = [
         supports_fwgrad_bwgrad=True,
         assert_jit_shape_analysis=True,
         skips=(
+            # Exception('grad_input must be contiguous')
+            DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                dtypes=(torch.float32,),
+                device_type='cpu',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
+            # Exception('grad_input must be contiguous')
+            DecorateInfo(
+                unittest.expectedFailure,
+                'TestCommon',
+                'test_noncontiguous_samples',
+                dtypes=(torch.float32,),
+                device_type='mps',
+                active_if=lambda kwargs: kwargs.get('format') == NoncontiguousType.CHANNELS_LAST),
             # RuntimeError:
             # undefined value tensor:
             #   File "<string>", line 3
