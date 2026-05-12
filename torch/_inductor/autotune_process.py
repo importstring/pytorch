@@ -68,6 +68,16 @@ from .virtualized import V
 
 
 CUDA_VISIBLE_DEVICES = "CUDA_VISIBLE_DEVICES"
+ZE_AFFINITY_MASK = "ZE_AFFINITY_MASK"
+
+_visible_device_env_var_maps = {"cuda": CUDA_VISIBLE_DEVICES, "xpu": ZE_AFFINITY_MASK}
+
+
+def get_visible_devices_env_var(gpu_type: str | None = None) -> str:
+    if gpu_type is None:
+        gpu_type = get_gpu_type()
+    return _visible_device_env_var_maps.get(gpu_type, "CUDA_VISIBLE_DEVICES")
+
 
 autotuning_log = getArtifactLogger(__name__, "autotuning")
 
@@ -89,7 +99,7 @@ class TuningProcess:
         autotuning_log.debug(
             "Started autotune subprocess %s. Visible devices: %s",
             os.getpid(),
-            os.environ.get(CUDA_VISIBLE_DEVICES),
+            os.environ.get(get_visible_devices_env_var()),
         )
 
         def workloop():
@@ -161,7 +171,7 @@ class TuningProcess:
             else "0",
         }
         if self.device is not None:
-            env[CUDA_VISIBLE_DEVICES] = str(self.device)
+            env[get_visible_devices_env_var()] = str(self.device)
         self.process = subprocess.Popen(
             cmd,
             env=env,
@@ -297,10 +307,11 @@ class TuningProcessPool:
         gpu_type = get_gpu_type()
         device_interface = get_interface_for_device(gpu_type)
         count = device_interface.device_count()
+        visible_devices_env_var = get_visible_devices_env_var(gpu_type)
 
         # If the user specified the visible devices in the env, use those.
-        if CUDA_VISIBLE_DEVICES in os.environ:
-            devices = [int(d) for d in os.environ[CUDA_VISIBLE_DEVICES].split(",")]
+        if visible_devices_env_var in os.environ:
+            devices = [int(d) for d in os.environ[visible_devices_env_var].split(",")]
             assert len(devices) <= count
             return devices
 
@@ -557,7 +568,8 @@ class _TestBenchmarkRequest(BenchmarkRequest):
         self, *input_tensors: torch.Tensor, out: torch.Tensor | None = None
     ) -> float:
         if self.device is not None:
-            assert os.environ.get(CUDA_VISIBLE_DEVICES, None) == str(self.device)
+            visible_devices_env_var = get_visible_devices_env_var()
+            assert os.environ.get(visible_devices_env_var, None) == str(self.device)
         if self.sleep:
             time.sleep(self.sleep)
         if self.exc:
