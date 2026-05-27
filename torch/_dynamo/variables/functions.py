@@ -86,6 +86,7 @@ from ..utils import (
     is_wrapper_or_member_descriptor,
     istype,
     make_cell,
+    proxy_args_kwargs,
 )
 from .base import (
     AsPythonConstantNotImplementedError,
@@ -1014,6 +1015,71 @@ class UserFunctionVariable(BaseUserFunctionVariable):
 
     def is_python_equal(self, other: object) -> bool:
         return isinstance(other, variables.UserFunctionVariable) and self.fn is other.fn
+
+
+class CopyFunctionVariable(UserFunctionVariable):
+    @staticmethod
+    def _tensor_requires_grad(copy_arg: VariableTracker) -> bool:
+        requires_grad = getattr(copy_arg, "requires_grad", None)
+        if requires_grad is not None:
+            return bool(requires_grad)
+        node = copy_arg.maybe_fx_node()
+        if node is None:
+            return False
+        example_value = node.meta.get("example_value")
+        return isinstance(example_value, torch.Tensor) and example_value.requires_grad
+
+    def call_function(
+        self,
+        tx: "InstructionTranslator",
+        args: list[VariableTracker],
+        kwargs: dict[str, VariableTracker],
+    ) -> VariableTracker:
+        copy_arg = None
+        if len(args) == 1 and not kwargs:
+            copy_arg = args[0]
+        elif not args and set(kwargs.keys()) == {"x"}:
+            copy_arg = kwargs["x"]
+
+        if copy_arg is not None and copy_arg.is_tensor():
+            # Strict export v2 uses fullgraph_capture with tx.export unset.
+            if tx.export or torch.compiler.is_exporting():
+                if self._tensor_requires_grad(copy_arg):
+                    unimplemented(
+                        gb_type="copy.copy() on Tensor requiring grad",
+                        context=f"copy.copy({copy_arg})",
+                        explanation="torch.export does not support copy.copy() on "
+                        "tensors with requires_grad=True.",
+                        hints=[
+                            "Avoid calling copy.copy() on tensors that require grad.",
+                            *graph_break_hints.SUPPORTABLE,
+                        ],
+                    )
+
+                from .builder import wrap_fx_proxy
+
+                return wrap_fx_proxy(
+                    tx,
+                    tx.output.create_proxy(
+                        "call_function",
+                        torch.ops.aten.detach.default,
+                        *proxy_args_kwargs([copy_arg], {}),
+                    ),
+                )
+
+            unimplemented(
+                gb_type="copy.copy() on Tensor",
+                context=f"copy.copy({copy_arg})",
+                explanation="Dynamo does not support copy.copy() on tensors "
+                "outside export because preserving shallow-copy tensor "
+                "identity across compiled backends is not currently supported.",
+                hints=[
+                    "Avoid calling copy.copy() on tensors inside compiled regions.",
+                    *graph_break_hints.SUPPORTABLE,
+                ],
+            )
+
+        return super().call_function(tx, args, kwargs)
 
 
 class InspectSignatureVariable(UserFunctionVariable):
