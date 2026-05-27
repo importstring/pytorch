@@ -107,29 +107,23 @@ static std::tuple<Tensor, std::optional<int64_t>> _new_zeros_with_same_feature_m
 static std::tuple<Tensor, std::optional<int64_t>> linspace_logspace_batch_rule_helper(
     const at::Tensor& start, std::optional<int64_t> start_bdim,
     const at::Tensor& end, std::optional<int64_t> end_bdim,
-    int64_t steps,
+    const c10::SymInt& steps,
     std::optional<double> base,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
     std::optional<at::Device> device,
     std::optional<bool> pin_memory)
 {
-  auto batch_size = get_bdim_size2(start, start_bdim, end, end_bdim);
+  auto batch_size = get_bdim_size2_symint(start, start_bdim, end, end_bdim);
   auto start_ = ensure_has_bdim(start, start_bdim.has_value(), batch_size);
   auto end_ = ensure_has_bdim(end, end_bdim.has_value(), batch_size);
   start_ = moveBatchDimToFront(start_, start_bdim);
   end_ = moveBatchDimToFront(end_, end_bdim);
 
   auto tensor_options = at::TensorOptions().dtype(dtype).layout(layout).device(device).pinned_memory(pin_memory);
-
-  Tensor result;
-  if (steps == 0){
-    result = at::full({batch_size, 0}, 0, tensor_options);
-  } else if (steps == 1){
-    result = start_.new_empty({batch_size}, tensor_options).copy_(start_).unsqueeze(1);
-  } else {
-    result = (start_ + at::arange(0, steps, tensor_options).unsqueeze_(1) * (end_ - start_) / (steps - 1)).transpose(0, 1);
-  }
+  auto denom = (steps - 1).max(1);
+  auto step_range = at::arange(0, steps, tensor_options).unsqueeze_(1);
+  auto result = (start_ + step_range * (end_ - start_) / denom).transpose(0, 1);
 
   if (base){
     result = at::pow(*base, result);
@@ -145,7 +139,7 @@ static std::tuple<Tensor, std::optional<int64_t>> linspace_logspace_batch_rule_h
 static std::tuple<Tensor, std::optional<int64_t>> linspace_Tensor_Tensor_batch_rule(
     const at::Tensor& start, std::optional<int64_t> start_bdim,
     const at::Tensor& end, std::optional<int64_t> end_bdim,
-    int64_t steps,
+    const c10::SymInt& steps,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
     std::optional<at::Device> device,
@@ -156,7 +150,7 @@ static std::tuple<Tensor, std::optional<int64_t>> linspace_Tensor_Tensor_batch_r
 static std::tuple<Tensor, std::optional<int64_t>> linspace_Tensor_Scalar_batch_rule(
     const at::Tensor& start, std::optional<int64_t> start_bdim,
     const at::Scalar& end,
-    int64_t steps,
+    const c10::SymInt& steps,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
     std::optional<at::Device> device,
@@ -169,7 +163,7 @@ static std::tuple<Tensor, std::optional<int64_t>> linspace_Tensor_Scalar_batch_r
 static std::tuple<Tensor, std::optional<int64_t>> linspace_Scalar_Tensor_batch_rule(
     const at::Scalar& start,
     const at::Tensor& end, std::optional<int64_t> end_bdim,
-    int64_t steps,
+    const c10::SymInt& steps,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
     std::optional<at::Device> device,
@@ -182,7 +176,7 @@ static std::tuple<Tensor, std::optional<int64_t>> linspace_Scalar_Tensor_batch_r
 static std::tuple<Tensor, std::optional<int64_t>> logspace_Tensor_Tensor_batch_rule(
     const at::Tensor& start, std::optional<int64_t> start_bdim,
     const at::Tensor& end, std::optional<int64_t> end_bdim,
-    int64_t steps,
+    const c10::SymInt& steps,
     double base,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
@@ -194,7 +188,7 @@ static std::tuple<Tensor, std::optional<int64_t>> logspace_Tensor_Tensor_batch_r
 static std::tuple<Tensor, std::optional<int64_t>> logspace_Tensor_Scalar_batch_rule(
     const at::Tensor& start, std::optional<int64_t> start_bdim,
     const at::Scalar& end,
-    int64_t steps,
+    const c10::SymInt& steps,
     double base,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
@@ -208,7 +202,7 @@ static std::tuple<Tensor, std::optional<int64_t>> logspace_Tensor_Scalar_batch_r
 static std::tuple<Tensor, std::optional<int64_t>> logspace_Scalar_Tensor_batch_rule(
     const at::Scalar& start,
     const at::Tensor& end, std::optional<int64_t> end_bdim,
-    int64_t steps,
+    const c10::SymInt& steps,
     double base,
     std::optional<at::ScalarType> dtype,
     std::optional<at::Layout> layout,
