@@ -303,9 +303,6 @@ std::string _memory_snapshot_pickled() {
   IValue active_pending_free_s = "active_pending_free";
   IValue inactive_s = "inactive";
   IValue addr_s = "addr";
-  IValue filename_s = "filename";
-  IValue name_s = "name";
-  IValue line_s = "line";
   IValue frames_s = "frames";
   IValue forward_frames_s = "forward_frames";
   IValue blocks_s = "blocks";

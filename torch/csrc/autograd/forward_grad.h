@@ -183,7 +183,7 @@ struct TORCH_API ForwardGrad : std::enable_shared_from_this<ForwardGrad> {
     // Keep the Tensor alive until we have released the lock
     // This is needed as we can be in a case where this function is called by
     // ForwardADLevel destructor
-    auto t = (*it).second;
+    [[maybe_unused]] auto t = (*it).second;
     content_.erase(level);
     lock.unlock();
   }

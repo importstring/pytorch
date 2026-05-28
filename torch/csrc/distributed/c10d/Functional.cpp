@@ -800,10 +800,10 @@ class Isend : public torch::autograd::Function<Isend> {
 
     auto group = c10d::resolve_process_group(group_name);
     ctx->saved_data["src"] = group->getRank();
-    auto work = c10::Dispatcher::singleton()
-                    .findSchemaOrThrow("_c10d_functional::isend", "")
-                    .typed<decltype(c10d::isend)>()
-                    .call(input, dst, tag, group_name);
+    c10::Dispatcher::singleton()
+        .findSchemaOrThrow("_c10d_functional::isend", "")
+        .typed<decltype(c10d::isend)>()
+        .call(input, dst, tag, group_name);
     return at::Tensor();
   }
 
@@ -840,10 +840,10 @@ class Irecv : public torch::autograd::Function<Irecv> {
 
     auto group = c10d::resolve_process_group(group_name);
     ctx->saved_data["my_rank"] = group->getRank();
-    auto work = c10::Dispatcher::singleton()
-                    .findSchemaOrThrow("_c10d_functional::irecv", "")
-                    .typed<decltype(c10d::irecv)>()
-                    .call(input, src, tag, group_name);
+    c10::Dispatcher::singleton()
+        .findSchemaOrThrow("_c10d_functional::irecv", "")
+        .typed<decltype(c10d::irecv)>()
+        .call(input, src, tag, group_name);
     return at::Tensor();
   }
 
