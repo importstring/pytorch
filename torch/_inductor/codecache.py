@@ -2422,8 +2422,8 @@ class AotCodeCompiler:
             if not config.aot_inductor.dynamic_linkage:
                 generated_files.append(header_path)
 
-        output_code_log.info("Wrapper code written to: %s", wrapper_path)
-        output_code_log.info("Kernel code written to: %s", kernel_path)
+        output_code_log.info("AOT wrapper code written to: %s", wrapper_path)
+        output_code_log.info("AOT kernel code written to: %s", kernel_path)
         trace_structured(
             "graph_dump",
             lambda: {
