@@ -1,8 +1,11 @@
+import logging
 import os
 import signal
 from threading import Thread
 from time import sleep
 
+
+log = logging.getLogger(__name__)
 
 _IN_TOPLEVEL_PROCESS = True
 
@@ -39,6 +42,22 @@ def _async_compile_initializer(orig_ppid: int) -> None:
 
     # Install a crash handler to print out the stacktrace for SEGV
     torch._C._initCrashHandler()
+
+    # A worker forked after CUDA init breaks Triton's cuInit-based is_active()
+    # (triton#9578); pin the nvidia driver so .active won't raise "0 active
+    # drivers". Guard before importing Triton so CPU-only/AMD workers skip it.
+    if torch.version.hip is None and torch.cuda.is_available():
+        try:
+            import triton
+
+            if triton.runtime.driver._active is None:
+                backend = triton.backends.backends.get("nvidia")
+                if backend is not None:
+                    triton.runtime.driver.set_active(backend.driver())
+        except Exception:
+            log.debug(
+                "Failed to pin Triton nvidia driver in compile worker", exc_info=True
+            )
 
     # Set a bit to distinguish async_compile subprocesses from the toplevel process.
     global _IN_TOPLEVEL_PROCESS

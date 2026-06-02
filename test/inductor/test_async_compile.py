@@ -129,6 +129,54 @@ def _forked_daemon_compile_worker(q):
         shutdown_compile_workers()
 
 
+def _pin_driver_bad_fork_worker(q):
+    # Spawned subprocess standing in for the SubprocPool sidecar: initialize CUDA
+    # here (keeping it out of the shared test runner), then fork a child that is
+    # therefore a "bad fork". The child forces the nvidia is_active() to report no
+    # GPU (triton#9578) and checks _async_compile_initializer pins the driver so
+    # driver.active resolves instead of raising "0 active drivers".
+    try:
+        import triton
+
+        from torch._inductor.compile_worker.utils import _async_compile_initializer
+
+        torch.cuda.get_device_properties(0)
+        nvidia = triton.backends.backends["nvidia"]
+        nvidia.driver.is_active = staticmethod(lambda: False)
+        triton.runtime.driver._active = None
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message=r"os\.fork\(\) was called.*", category=RuntimeWarning
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=(
+                    r"This process .* is multi-threaded, use of fork\(\) "
+                    r"may lead to deadlocks in the child\."
+                ),
+                category=DeprecationWarning,
+            )
+            pid = os.fork()
+        if pid == 0:
+            try:
+                _async_compile_initializer(os.getppid())
+                active = triton.runtime.driver.active
+                is_nvidia = isinstance(active, nvidia.driver) or (
+                    hasattr(active, "_obj") and isinstance(active._obj, nvidia.driver)
+                )
+                q.put(("ok", (type(active).__name__, is_nvidia)))
+            except BaseException:
+                q.put(("err", traceback.format_exc()))
+            finally:
+                q.close()
+                q.join_thread()
+                os._exit(0)
+        os.waitpid(pid, 0)
+    except BaseException:
+        q.put(("err", traceback.format_exc()))
+
+
 @instantiate_parametrized_tests
 class TestAsyncCompile(TestCase):
     def _run_daemon_compile_worker(self, worker_start_method):
@@ -248,6 +296,32 @@ class TestAsyncCompile(TestCase):
             with fresh_cache():
                 compiled_fn = torch.compile(fn)
                 self.assertEqual(fn(x, y), compiled_fn(x, y))
+
+    @requires_gpu()
+    @requires_triton()
+    def test_compile_worker_pins_driver_in_bad_fork(self):
+        # Regression test for #184643; see _pin_driver_bad_fork_worker.
+        if not (torch.cuda.is_available() and torch.version.hip is None):
+            self.skipTest("requires an NVIDIA GPU")
+        ctx = multiprocessing.get_context("spawn")
+        q = ctx.Queue()
+        p = ctx.Process(target=_pin_driver_bad_fork_worker, args=(q,))
+        p.daemon = True
+        p.start()
+        p.join(120)
+        if p.is_alive():
+            p.terminate()
+            p.join()
+            self.fail("bad-fork driver worker timed out")
+        try:
+            kind, payload = q.get(timeout=5)
+        except queue.Empty:
+            self.fail(f"bad-fork driver worker exited without a result: {p.exitcode}")
+        self.assertEqual(kind, "ok", payload)
+        _name, is_nvidia = payload
+        self.assertTrue(
+            is_nvidia, f"driver.active was not the nvidia driver: {payload}"
+        )
 
     @requires_gpu()
     @requires_triton()
