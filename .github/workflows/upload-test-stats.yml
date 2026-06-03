@@ -4,6 +4,10 @@ on:
   workflow_run:
     workflows:
       - pull
+      - rocm-mi350x-1
+      - rocm-mi350x-2
+      - rocm-mi350x-4
+      - rocm-mi350x-8
       - trunk
       - trunk-rocm-sandbox
       - periodic
