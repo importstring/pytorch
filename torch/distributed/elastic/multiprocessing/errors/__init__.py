@@ -114,8 +114,10 @@ class ProcessFailure:
     error_file_data: JSON = field(init=False)
     message: str = field(init=False)
     timestamp: int = field(init=False)
+    signal_message_enriched: bool = field(init=False)
 
     def __post_init__(self):
+        original_error_file = self.error_file
         self.error_file_data = _EMPTY_ERROR_DATA
         if os.path.isfile(self.error_file):
             try:
@@ -148,6 +150,39 @@ class ProcessFailure:
                     "retryability": "False",
                 }
                 self.message = "To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html"
+        # For signal failures (no traceback), let the (build-swapped) handler
+        # append device-fault context (e.g. ROCm GPU faults) scanned from the
+        # worker logs. Done here, at failure construction, so it surfaces no
+        # matter how the ChildFailedError is later handled. The base handler is
+        # a no-op (returns the text unchanged), so this is inert in OSS.
+        # ``signal_message_enriched`` lets record() route the enriched failure
+        # through record_exception (str(e)) instead of dump_error_file, which
+        # would otherwise re-read the unenriched on-disk worker error file.
+        self.signal_message_enriched = False
+        if self.exitcode < 0:
+            handler = get_error_handler()
+            if isinstance(self.message, str):
+                enriched_message = handler.maybe_enrich_signal_failure_message(
+                    self.message, original_error_file
+                )
+                if enriched_message != self.message:
+                    self.message = enriched_message
+                    self.signal_message_enriched = True
+            elif isinstance(self.message, dict):
+                # Structured reply file (e.g. the fb fatal-signal handler writes
+                # one even for signals). ``format_msg`` renders
+                # ``extraInfo.py_callstack`` for dict messages, so enrich that
+                # field rather than the dict itself.
+                extra_info = self.message.get("extraInfo")
+                if isinstance(extra_info, dict) and isinstance(
+                    extra_info.get("py_callstack"), str
+                ):
+                    enriched_callstack = handler.maybe_enrich_signal_failure_message(
+                        extra_info["py_callstack"], original_error_file
+                    )
+                    if enriched_callstack != extra_info["py_callstack"]:
+                        extra_info["py_callstack"] = enriched_callstack
+                        self.signal_message_enriched = True
 
     def _get_error_data(self, error_file_data: dict[str, Any]) -> tuple[str, int]:
         message = error_file_data["message"]
@@ -374,16 +409,20 @@ def record(
                     raise
             except ChildFailedError as e:
                 rank, failure = e.get_first_failure()
-                if failure.error_file != _NOT_AVAILABLE:
+                # An enriched signal failure carries device-fault context only on
+                # the in-memory message; record_exception writes str(e) (enriched),
+                # whereas dump_error_file would re-read the unenriched on-disk
+                # worker error file and lose it. So prefer record_exception here.
+                if failure.signal_message_enriched:
+                    error_handler.record_exception(e)
+                elif failure.error_file != _NOT_AVAILABLE:
                     error_handler.dump_error_file(failure.error_file, failure.exitcode)
                 else:
                     logger.info(
-                        (
-                            "local_rank %s FAILED with no error file."
-                            " Decorate your entrypoint fn with @record for traceback info."
-                            " See: https://pytorch.org/docs/stable/elastic/errors.html",
-                            rank,
-                        )
+                        "local_rank %s FAILED with no error file."
+                        " Decorate your entrypoint fn with @record for traceback info."
+                        " See: https://pytorch.org/docs/stable/elastic/errors.html",
+                        rank,
                     )
                 raise
             except Exception as e:
