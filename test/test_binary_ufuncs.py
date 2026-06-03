@@ -4718,5 +4718,26 @@ def generate_not_implemented_tests(cls):
 generate_not_implemented_tests(TestBinaryUfuncs)
 instantiate_device_type_tests(TestBinaryUfuncs, globals(), allow_xpu=True)
 
+
+# Separate class so gcd/lcm get MPS coverage; the rest of TestBinaryUfuncs is
+# not enabled on MPS yet. Do not use @onlyNativeDeviceTypes here -- it excludes
+# MPS.
+class TestGcdLcm(TestCase):
+    # int8 hung originally; int64 covers the widest path. Fix is width-agnostic.
+    @dtypes(torch.int8, torch.int64)
+    def test_gcd_lcm_int_min(self, device, dtype):
+        # abs(INT_MIN) overflows; gcd must stay correct and non-negative.
+        imin = torch.iinfo(dtype).min
+        a = torch.tensor([imin, imin, 6], device=device, dtype=dtype)
+        b = torch.tensor([6, 1, imin], device=device, dtype=dtype)
+        gcd = torch.gcd(a, b)
+        self.assertEqual(gcd, torch.tensor([2, 1, 2], device=device, dtype=dtype))
+        self.assertTrue((gcd >= 0).all())
+        # lcm overflows on INT_MIN; just check it matches CPU.
+        self.assertEqual(torch.lcm(a, b).cpu(), torch.lcm(a.cpu(), b.cpu()))
+
+
+instantiate_device_type_tests(TestGcdLcm, globals(), allow_mps=True)
+
 if __name__ == "__main__":
     run_tests()

@@ -439,8 +439,10 @@ struct gcd_functor {
     // device analog of C++20 std::countr_zero) instead of integer
     // division/modulo, which is emulated (and slow) for 64-bit ints on MPS.
     // ctz is only ever evaluated on values guarded to be non-zero.
-    T u = a < 0 ? -a : a;
-    T v = b < 0 ? -b : b;
+    // Work unsigned: abs of the most negative value overflows and hangs.
+    using U = ::metal::make_unsigned_t<T>;
+    U u = a < 0 ? U(0) - U(a) : U(a);
+    U v = b < 0 ? U(0) - U(b) : U(b);
     if (u == 0) {
       return v;
     }
@@ -455,7 +457,7 @@ struct gcd_functor {
     do {
       v >>= ::metal::ctz(static_cast<ulong>(v));
       if (u > v) {
-        T t = u;
+        U t = u;
         u = v;
         v = t;
       }
@@ -469,9 +471,14 @@ struct lcm_functor {
   template <typename T>
   inline T operator()(const T a, const T b) {
     T g = gcd_functor{}(a, b);
-    // Divide before multiplying to avoid overflow; g divides a exactly.
-    T r = g == 0 ? 0 : a / g * b;
-    return r < 0 ? -r : r;
+    if (g == 0) {
+      return 0;
+    }
+    // Promote char/short to int so overflow wraps after the abs (on return),
+    // matching _refs.lcm and the CPU kernel.
+    using P = ::metal::conditional_t<sizeof(T) < sizeof(int), int, T>;
+    const P r = static_cast<P>(a) / static_cast<P>(g) * static_cast<P>(b);
+    return static_cast<T>(r < 0 ? -r : r);
   }
 };
 
