@@ -1414,11 +1414,13 @@ kernel void svd_jacobi(
               vQ[i] = svd_mul(phi, s * vp) + c * vq;
             }
           } else {
+            device T* vP = Vacc_b + p * n;
+            device T* vQ = Vacc_b + q * n;
             for (uint32_t i = simd_lane; i < n; i += kSimd) {
-              T vp = Vacc_b[i * n + p];
-              T vq = Vacc_b[i * n + q];
-              Vacc_b[i * n + p] = c * vp - svd_mul(cphi, s * vq);
-              Vacc_b[i * n + q] = svd_mul(phi, s * vp) + c * vq;
+              T vp = vP[i];
+              T vq = vQ[i];
+              vP[i] = c * vp - svd_mul(cphi, s * vq);
+              vQ[i] = svd_mul(phi, s * vp) + c * vq;
             }
           }
         }
@@ -1489,7 +1491,7 @@ kernel void svd_jacobi(
       if (params.compute_uv) {
         threadgroup T* vsrc = Vtg + src * n;
         for (uint32_t c = simd_lane; c < n; c += kSimd) {
-          T v = params.stage_v ? vsrc[c] : Vacc_b[c * n + src];
+          T v = params.stage_v ? vsrc[c] : Vacc_b[src * n + c];
           V_b[c * params.v_ld + j] = svd_conj(v);
         }
       }
@@ -1501,7 +1503,7 @@ kernel void svd_jacobi(
         threadgroup T* vsrc = Vtg + src * n;
         for (uint32_t c = simd_lane; c < n; c += kSimd) {
           U_b[j * params.u_ld + c] =
-              params.stage_v ? vsrc[c] : Vacc_b[c * n + src];
+              params.stage_v ? vsrc[c] : Vacc_b[src * n + c];
         }
       }
     }
@@ -1650,7 +1652,8 @@ kernel void eigh_jacobi(
         float c = 1.0f;
         T s = T(0);
         float thresh = ::metal::max(params.tol * off, params.tol * gscale);
-        if (apq_abs > thresh + 1e-30f) {
+        bool rotate = apq_abs > thresh + 1e-30f;
+        if (rotate) {
           if (simd_lane == 0) {
             ::metal::atomic_store_explicit(
                 &any_rotation, 1u, ::metal::memory_order_relaxed);
@@ -1666,19 +1669,12 @@ kernel void eigh_jacobi(
         if (simd_lane == 0) {
           cbuf[k] = c;
           sbuf[k] = s;
-          pbuf[k] = p;
+          pbuf[k] = rotate ? p : n;
           qbuf[k] = q;
         }
-      }
-      threadgroup_barrier(mem_flags::mem_threadgroup);
-
-      for (uint32_t k = simd_group; k < n_pairs; k += num_sg) {
-        uint32_t p = pbuf[k], q = qbuf[k];
-        if (p >= n) {
+        if (!rotate) {
           continue;
         }
-        float c = cbuf[k];
-        T s = sbuf[k];
         T cs = svd_conj(s);
         threadgroup T* colP = Atg + p * n;
         threadgroup T* colQ = Atg + q * n;
