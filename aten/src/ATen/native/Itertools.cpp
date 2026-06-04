@@ -11,7 +11,9 @@
 #include <ATen/ops/combinations_native.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/full.h>
+#include <ATen/ops/index.h>
 #include <ATen/ops/meshgrid.h>
+#include <ATen/ops/nonzero.h>
 #include <ATen/ops/stack.h>
 #endif
 
@@ -72,13 +74,10 @@ Tensor combinations(const Tensor& self, int64_t r, bool with_replacement) {
     return at::empty({0}, self.options());
   }
   c10::SymInt num_elements = self.sym_numel();
-  std::vector<Tensor> grids = at::meshgrid(std::vector<Tensor>(r, self), "ij");
   Tensor mask =
       _triu_mask(std::move(num_elements), r, with_replacement, self.options());
-  for (Tensor& t : grids) {
-    t = t.masked_select(mask);
-  }
-  return at::stack(grids, 1);
+  Tensor indices = mask.nonzero();
+  return self.index({indices});
 }
 
 } // namespace at::native
