@@ -1,10 +1,11 @@
 self-hosted-runner:
   labels:
     # GitHub hosted runner that actionlint doesn't recognize because actionlint version (1.6.21) is too old
-    - linux-pytorch-do-mi350x-1
-    - linux-pytorch-do-mi350x-2
-    - linux-pytorch-do-mi350x-4
-    - linux-pytorch-do-mi350x-8
+    # mi350 runners
+    - linux.rocm.gpu.mi350.1
+    - linux.rocm.gpu.mi350.2
+    - linux.rocm.gpu.mi350.4
+    - linux.rocm.gpu.mi350.8
     - ubuntu-24.04
     # GitHub hosted x86 Linux runners
     - linux.24_04.4x
