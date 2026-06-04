@@ -916,7 +916,6 @@ def _run_and_assert_no_indirect_indexing(
                 "tmp" not in stmt,
                 msg=f"Found indirect indexing in statement '{stmt}' from code:\n{code}",
             )
-
         if has_wrapping is not None:
             test_case.assertTrue(
                 ("where" in code or ") ? (" in code) is has_wrapping,
