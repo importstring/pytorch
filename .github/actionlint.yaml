@@ -1,9 +1,6 @@
 self-hosted-runner:
   labels:
     # GitHub hosted runner that actionlint doesn't recognize because actionlint version (1.6.21) is too old
-    # mi350 runners
-    - linux.rocm.gpu.mi350.1
-    - linux.rocm.gpu.mi350.2
     - ubuntu-24.04
     # GitHub hosted x86 Linux runners
     - linux.24_04.4x
@@ -70,6 +67,9 @@ self-hosted-runner:
     # gfx950 runners
     - linux.rocm.gpu.gfx950.1
     - linux.rocm.gpu.gfx950.4
+    # mi350 runners
+    - linux.rocm.gpu.mi350.1
+    - linux.rocm.gpu.mi350.2
     # Org wise AWS `mac2.metal` runners (2020 Mac mini hardware powered by Apple silicon M1 processors)
     - macos-m1-stable
     - macos-m1-14
