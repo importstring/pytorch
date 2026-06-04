@@ -42,6 +42,7 @@ from torch._opaque_base import OpaqueBase
 from torch.utils._mode_utils import no_dispatch
 from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 from torch.utils.weak import WeakIdKeyDictionary
+from torch._subclasses.fake_tensor import is_fake
 
 
 if TYPE_CHECKING:
@@ -59,9 +60,7 @@ if TYPE_CHECKING:
 
 
 def _is_fake_tensor(t: object) -> TypeIs[FakeTensor]:
-    from torch._subclasses.fake_tensor import FakeTensor
-
-    return isinstance(t, FakeTensor)
+    return is_fake(t)
 
 
 DimList = list
