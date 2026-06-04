@@ -31,7 +31,6 @@ on:
       - inductor-rocm-mi350
       - inductor-rocm-mi355
       - inductor-perf-nightly-rocm-mi300
-      - inductor-perf-nightly-rocm-mi350
       - inductor-perf-nightly-rocm-mi355
       - mac-mps
     types:
