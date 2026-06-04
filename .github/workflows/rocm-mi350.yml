@@ -3,7 +3,9 @@ name: rocm-mi350
 on:
   push:
     tags:
-      - ciflow/rocm-mi350/*
+      - ciflow/trunk/*
+      # - ciflow/rocm-mi350/*
+    # Uncomment the arch-specific tag above when ready to merge.
   workflow_dispatch:
   schedule:
     - cron: 29 8 * * *  # about 1:29am PDT

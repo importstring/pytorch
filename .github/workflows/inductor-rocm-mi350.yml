@@ -6,7 +6,9 @@ on:
       - main
       - release/*
     tags:
-      - ciflow/inductor-rocm-mi350/*
+      - ciflow/trunk/*
+      # - ciflow/inductor-rocm-mi350/*
+    # Uncomment the arch-specific tag above when ready to merge.
   workflow_dispatch:
 
 concurrency:

@@ -6,7 +6,9 @@ on:
     - cron: 29 8 * * *  # about 1:29am PDT, for mem leak check and rerun disabled tests
   push:
     tags:
-      - ciflow/periodic-rocm-mi350/*
+      - ciflow/trunk/*
+      # - ciflow/periodic-rocm-mi350/*
+    # Uncomment the arch-specific tag above when ready to merge.
     branches:
       - release/*
   workflow_dispatch:
