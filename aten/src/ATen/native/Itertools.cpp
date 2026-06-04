@@ -32,23 +32,14 @@ Tensor _triu_mask(
   std::vector<Tensor> index_grids =
       at::meshgrid(std::vector<Tensor>(dims, range), "ij");
 
-  auto sym_sizes = index_grids[0].sym_sizes().vec();
-
-  std::vector<int64_t> sizes;
-  sizes.reserve(sym_sizes.size());
-
-  for (const auto& s : sym_sizes) {
-    sizes.push_back(s.guard_int(__FILE__, __LINE__));
-  }
-
-  Tensor mask = at::full(sizes, true, opt.dtype(kBool));
+  Tensor mask = at::full_symint(index_grids[0].sym_sizes(), true, opt.dtype(kBool));
 
   if (diagonal) {
     for (int64_t i = 0; i < dims - 1; i++) {
       mask *= index_grids[i] <= index_grids[i + 1];
     }
   } else {
-    for (int64_t i = 0; i < dims - 1; i++) {
+    for (int64_t i = 0; i <  dims - 1; i++) {
       mask *= index_grids[i] < index_grids[i + 1];
     }
   }
