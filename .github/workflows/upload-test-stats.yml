@@ -10,7 +10,6 @@ on:
       - periodic-rocm-mi200
       - periodic-rocm-mi300
       - periodic-rocm-mi350
-      - periodic-rocm-mi355
       - inductor
       - unstable
       - slow
@@ -20,7 +19,6 @@ on:
       - rocm-mi200
       - rocm-mi300
       - rocm-mi350
-      - rocm-mi355
       - rocm-navi31
       - rocm-nightly
       - inductor-micro-benchmark
@@ -29,9 +27,8 @@ on:
       - inductor-rocm-mi200
       - inductor-rocm-mi300
       - inductor-rocm-mi350
-      - inductor-rocm-mi355
       - inductor-perf-nightly-rocm-mi300
-      - inductor-perf-nightly-rocm-mi355
+      - inductor-perf-nightly-rocm-mi350
       - mac-mps
     types:
       - completed
