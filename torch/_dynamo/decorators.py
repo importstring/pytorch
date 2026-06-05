@@ -1826,6 +1826,8 @@ def override_optimization_hint(x: Any, val: int) -> None:
             f"override_optimization_hint expects a torch.SymInt or int, got {type(x)}"
         )
     shape_env = x.node.shape_env
+    if shape_env is None:
+        raise AssertionError("shape_env should not be None")
     expr = x.node.expr
     import sympy
 

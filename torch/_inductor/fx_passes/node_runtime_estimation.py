@@ -113,7 +113,7 @@ def get_hint(x: int | torch.SymInt) -> int | None:
     if isinstance(x, int):
         return x
     assert isinstance(x, torch.SymInt)
-    return x.node.hint if x.node.has_hint() else None
+    return x.hint if x.has_hint() else None
 
 
 def can_benchmark_collective() -> bool:

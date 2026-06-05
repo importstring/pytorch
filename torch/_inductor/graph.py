@@ -1998,7 +1998,7 @@ class GraphLowering(torch.fx.Interpreter):
                         # require_exact_strides to handle views. But ultimately it's better to require
                         # the right strides at the tensor definition.
                         if n.meta["val"]._is_view() or isinstance(
-                            result.data,
+                            result.data,  # type: ignore[missing-attribute]
                             ir.BaseView,
                         ):
                             result = ir.ExternKernel.require_stride_order(
@@ -2473,7 +2473,8 @@ class GraphLowering(torch.fx.Interpreter):
                         return None
                     elif isinstance(x, (torch.SymInt, torch.SymFloat)):
                         # Need concrete value to run dynamic shapes and tune the result
-                        return x.node.hint
+                        assert x.hint is not None
+                        return x.hint
                     elif isinstance(x, FakeTensor):
                         return defake(x)
                     else:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import typing
 import warnings
 from typing import Any, TYPE_CHECKING
 
@@ -155,7 +156,7 @@ def try_convert_fake_to_real(
             if not isinstance(s, torch.SymInt):
                 return s
             unhinted = unhinted if not unhinted else s.node.has_hint()
-            return s.node.hint
+            return typing.cast(int, s.hint)
 
         stor_offset = map_symint(t.storage_offset())
         size = [map_symint(s) for s in t.shape]

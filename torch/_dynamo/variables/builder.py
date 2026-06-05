@@ -1585,7 +1585,7 @@ class VariableBuilder:
             if value.node.has_hint():
                 new_symint = (
                     self.tx.output.shape_env.create_unspecified_symint_and_symbol(
-                        int(value.node.hint),
+                        int(value.node.hint),  # type: ignore[bad-argument-type]
                         source,
                         dynamic_dim=DimDynamic.DYNAMIC,
                     )
