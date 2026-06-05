@@ -275,7 +275,8 @@ class TestFullyShardOverlap(FSDPTest):
     @skip_if_lt_x_gpu(2)
     def test_set_separate_reduce_scatter_group(self):
         """Reduce-scatter shares the shard PG by default; enabling gives it a
-        dedicated PG per mesh, and disabling resets to the shared PG."""
+        dedicated PG (one communicator shared across same-rank-set meshes), and
+        disabling resets to the shared PG."""
         model = nn.Sequential(nn.Linear(8, 8), nn.Linear(8, 8))
         for lin in model:
             fully_shard(lin)
@@ -297,8 +298,11 @@ class TestFullyShardOverlap(FSDPTest):
         # Default shares the all-gather (shard) PG
         _assert_shares_all_gather()
 
-        # Enable: a dedicated PG per mesh, distinct from the shard PG
+        # Enable: one dedicated PG shared across same-rank-set meshes (dedup),
+        # distinct from the shard PG
         model.set_separate_reduce_scatter_group()
+        rs_pgs = {id(pg.mesh_info.reduce_scatter_process_group) for pg in param_groups}
+        self.assertEqual(len(rs_pgs), 1)  # one communicator for the single rank set
         for pg in param_groups:
             self.assertIsNotNone(pg.mesh_info.reduce_scatter_process_group)
             self.assertIsNot(

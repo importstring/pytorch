@@ -972,12 +972,15 @@ class FSDPParamGroup:
             or self.mesh_info.shard_process_group
         )
 
-    def _set_separate_reduce_scatter_group(self, enable: bool) -> None:
+    def _set_separate_reduce_scatter_group(
+        self, enable: bool, new_groups: dict[tuple[int, ...], dist.ProcessGroup]
+    ) -> None:
         # Give reduce-scatter its own process group (separate from the shared
         # all-gather/shard PG) so the two can overlap in backward, or reset to
-        # the shared group. Creates one group per FSDP mesh over the shard ranks
-        # (dist.new_group is collective; call symmetrically), deduped per mesh so
-        # repeated calls do not leak communicators.
+        # the shared group. ``new_groups`` caches groups by shard ranks within
+        # one set_separate_reduce_scatter_group call so meshes sharding over the
+        # same ranks share one communicator (typically one total) rather than one
+        # per mesh; dist.new_group is collective, so call symmetrically.
         mesh_info = self.mesh_info
         if not isinstance(mesh_info, FSDPMeshInfo):
             raise AssertionError(
@@ -985,10 +988,16 @@ class FSDPParamGroup:
             )
         if not enable:
             mesh_info.reduce_scatter_process_group = None
-        elif mesh_info.reduce_scatter_process_group is None:
-            mesh_info.reduce_scatter_process_group = dist.new_group(
-                dist.get_process_group_ranks(mesh_info.shard_process_group)
+            return
+        ranks = tuple(dist.get_process_group_ranks(mesh_info.shard_process_group))
+        if ranks not in new_groups:
+            # Reuse the mesh's existing group if already enabled (idempotent),
+            # else create one for this rank set.
+            existing = mesh_info.reduce_scatter_process_group
+            new_groups[ranks] = (
+                existing if existing is not None else dist.new_group(list(ranks))
             )
+        mesh_info.reduce_scatter_process_group = new_groups[ranks]
 
     @property
     def _all_reduce_process_group(self) -> dist.ProcessGroup:

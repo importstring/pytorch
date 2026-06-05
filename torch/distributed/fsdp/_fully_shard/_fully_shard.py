@@ -767,24 +767,30 @@ class FSDPModule:
         streams but through the **same** process group -- one NCCL communicator,
         which processes one collective at a time and so serializes them on the
         wire. When enabled, FSDP creates a dedicated process group over the shard
-        ranks (``dist.new_group``), one per FSDP mesh, so the two collectives can
-        progress concurrently when the network can sustain it. This is
-        collective: like other FSDP comm setup, call it on all ranks.
+        ranks (``dist.new_group``) -- one per distinct set of shard ranks,
+        typically a single communicator -- so the two collectives can progress
+        concurrently when the network can sustain it. This is collective: like
+        other FSDP comm setup, call it on all ranks.
 
         Args:
             enable (bool): ``True`` (default) gives reduce-scatter its own
-                process group (one per FSDP mesh); ``False`` resets it to the
-                shared shard/all-gather group.
+                process group; ``False`` resets it to the shared shard/all-gather
+                group.
             recurse (bool): Whether to set for all FSDP submodules or just the
                 passed-in module.
         """
         self_module = cast(nn.Module, self)
         modules = list(self_module.modules()) if recurse else [self_module]
+        # Cache created groups by shard ranks so meshes that shard over the same
+        # ranks share one communicator (typically one total), not one per mesh.
+        new_groups: dict = {}
         for module in modules:
             if isinstance(module, FSDPModule):
                 state = module._get_fsdp_state()
                 for fsdp_param_group in state._fsdp_param_groups:
-                    fsdp_param_group._set_separate_reduce_scatter_group(enable)
+                    fsdp_param_group._set_separate_reduce_scatter_group(
+                        enable, new_groups
+                    )
 
     def set_unshard_in_backward(self, unshard_in_backward: bool) -> None:
         """
