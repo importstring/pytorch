@@ -3175,7 +3175,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
         # Here we just test the convolution correctly route to the fallback implementation
         # that is, it does not crash. The correctness of fallback implementation should be
         # covered in other tests
-        dtype = torch.half if self.device_type != "cpu" else torch.float
+        dtype = torch.half if self.device_type == "cuda" else torch.float
         conv1 = nn.Conv2d(2, 2, 8, 8).to(device).to(dtype)
         input_large = torch.randn(1, 2, 1024, 1024 * 1024, dtype=dtype, device=device)
         conv1(input_large)
@@ -3233,7 +3233,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
     @largeTensorTest("12GB")
     @serialTest()
     def test_conv_transposed_large(self, device):
-        dtype = torch.half if self.device_type != "cpu" else torch.float
+        dtype = torch.half if self.device_type == "cuda" else torch.float
         conv = nn.ConvTranspose2d(1, 1, 1, 1, bias=False).to(device).to(dtype)
         input_large = torch.randn(4096, 1, 512, 1024, dtype=dtype, device=device)
         # forward
@@ -3278,7 +3278,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
     @largeTensorTest("12GB")
     @serialTest()
     def test_conv_large(self, device):
-        dtype = torch.half if self.device_type != "cpu" else torch.float
+        dtype = torch.half if self.device_type == "cuda" else torch.float
         conv = nn.Conv2d(2, 2, 8, 8, bias=False).to(device).to(dtype)
         input_large = torch.randn(4097, 2, 512, 512, dtype=dtype, device=device)
         # forward
