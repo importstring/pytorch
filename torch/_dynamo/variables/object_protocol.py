@@ -446,6 +446,37 @@ def generic_repr(
     raise_type_error(tx, f"object of type '{obj.python_type_name()}' has no repr")
 
 
+def generic_str(
+    tx: "InstructionTranslatorBase", obj: "VariableTracker"
+) -> "VariableTracker":
+    """Approximates PyObject_Str semantics in Dynamo.
+
+    https://github.com/python/cpython/blob/v3.13.3/Objects/object.c#L781-L829
+
+    Resolution order: str identity check -> str_impl -> tp_repr fallback.
+
+    Unlike generic_bool/generic_len, this does not gate on a C-level tp_str
+    slot check because tp_str is not yet exposed via get_type_slots in the C++
+    layer. We approximate that by using a VT override when present and routing
+    the default path through generic_repr.
+    """
+    if maybe_get_python_type(obj) is str:
+        return obj
+
+    if type(obj).str_impl is VariableTracker.str_impl:
+        result = generic_repr(tx, obj)
+    else:
+        result = obj.str_impl(tx)
+
+    result_type = maybe_get_python_type(result)
+    if not issubclass(result_type, str):
+        raise_type_error(
+            tx,
+            f"__str__ returned non-string (type {result_type.__name__})",
+        )
+    return result
+
+
 def vt_getitem(
     tx: "InstructionTranslatorBase",
     obj: VariableTracker,
