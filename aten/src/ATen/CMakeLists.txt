@@ -365,6 +365,12 @@ if(USE_CUDA AND (USE_FLASH_ATTENTION OR USE_MEM_EFF_ATTENTION))
   )
 
   set_target_properties(flash_attention PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+  if(MSVC)
+    # Skip nvcc's cross-execution-space check for the flash kernels
+    target_compile_options(flash_attention PRIVATE
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcudafe;--diag_suppress=20011>)
+  endif()
 endif()
 
 if(USE_FLASH_ATTENTION)
