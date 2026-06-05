@@ -262,10 +262,10 @@ class MixOrderReduction:
         g1 = cls.get_numel_rnumel(node1)
         g2 = cls.get_numel_rnumel(node2)
 
-        if len(g1) != 2 or len(g2) != 2 or g1 == g2:
+        if len(g1) != 2 or len(g2) != 2:
             return False
 
-        return tuple(g1) == tuple(reversed(g2))
+        return g1 == g2 or tuple(g1) == tuple(reversed(g2))
 
     @classmethod
     def _is_full_access(cls, buf: str, node: BaseSchedulerNode) -> bool:
@@ -285,10 +285,13 @@ class MixOrderReduction:
         var_ranges = node.read_writes.var_ranges
 
         if not var_ranges:
-            assert isinstance(node, FusedSchedulerNode), f"{type(node)}"
+            if not isinstance(node, FusedSchedulerNode):
+                return False
             var_ranges = node.snodes[0].read_writes.var_ranges
 
-        assert var_ranges
+        # Range-less reads cannot prove full access over this node's loop domain.
+        if not var_ranges:
+            return False
         if not (OrderedSet(var_ranges) - OrderedSet(index.free_symbols)):
             return True
 
@@ -410,6 +413,16 @@ class MixOrderReduction:
                 fallback_value=False,
             ):
                 return False
+
+        # Equal groups can be true square inner+outer reductions, but also
+        # same-order reductions where an unrelated read makes one node look
+        # non-contiguous. Compare only common full reads to prove mixed order.
+        g2 = cls.get_numel_rnumel(other_node)
+        if g1 == g2 and not any(
+            cls.is_contiguous_load(buf, node1) != cls.is_contiguous_load(buf, node2)
+            for buf in common_reads
+        ):
+            return False
 
         # Make sure a persistent reduction will be generated
         if any(
