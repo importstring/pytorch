@@ -274,7 +274,7 @@ def _extract_subgraphs_and_args(
         integer_arg_dtypes = OrderedSet[torch.dtype](
             a.dtype for a in chain(score_subgraph_args[1:5], mask_subgraph_args[:4])
         )
-        assert (
+        if not (
             score_subgraph_args[0].dtype == args[0].dtype
             and len(integer_arg_dtypes) == 1
             and is_integer(integer_arg_dtypes.pop())
@@ -282,7 +282,8 @@ def _extract_subgraphs_and_args(
                 len(a.size()) == 0
                 for a in chain(score_subgraph_args[:5], mask_subgraph_args[:4])
             )
-        ), "flex_attention subgraph arg format has changed!"
+        ):
+            raise AssertionError("flex_attention subgraph arg format has changed!")
 
         yield score_subgraph, (*score_subgraph_args[:5], *args[7])
         yield args[4][-1], (*mask_subgraph_args[:4], *args[8])
@@ -309,10 +310,11 @@ def _extract_subgraphs_and_args(
         yield args[0], subgraph_args
         yield args[1], subgraph_args
     elif node.target is control_deps:
-        assert not kwargs, (
-            "Subgraph arguments can be renamed, so we cannot consistently "
-            "handle kwargs at this point in the stack."
-        )
+        if kwargs:
+            raise AssertionError(
+                "Subgraph arguments can be renamed, so we cannot consistently "
+                "handle kwargs at this point in the stack."
+            )
         yield args[1], tuple(args[2:])
     else:
         warnings.warn(
@@ -618,22 +620,24 @@ class FakeTensorUpdater:
                                 existing_storages,
                                 check_storage=False,
                             ):
-                                assert update_subgraph, (
-                                    "subgraph args must have consistent values!"
-                                )
+                                if not update_subgraph:
+                                    raise AssertionError(
+                                        "subgraph args must have consistent values!"
+                                    )
                                 # Check that only the stride has changed.  Other changes
                                 # cannot be handled without manual intervention.
-                                assert _is_fake_tensor_same(
+                                if not _is_fake_tensor_same(
                                     a,
                                     p_fake,
                                     existing_storages,
                                     check_strides=False,
                                     check_storage=False,
-                                ), (
-                                    "A subgraph argument other than striding has been "
-                                    "modified; FakeTensorUpdater cannot update this "
-                                    "argument!"
-                                )
+                                ):
+                                    raise AssertionError(
+                                        "A subgraph argument other than striding has been "
+                                        "modified; FakeTensorUpdater cannot update this "
+                                        "argument!"
+                                    )
 
                                 p.meta["val"] = a
                                 nodes_updated += 1
@@ -790,7 +794,8 @@ def countable_fx(node: torch.fx.Node) -> bool:
     """
     Whether or not we can count the flops of an FX node.
     """
-    assert isinstance(node, torch.fx.Node)
+    if not isinstance(node, torch.fx.Node):
+        raise AssertionError(f"expected torch.fx.Node, got {type(node)}")
     if not hasattr(node, "target"):
         return False
     target = node.target
