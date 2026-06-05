@@ -965,7 +965,30 @@ class FSDPParamGroup:
             raise AssertionError(
                 f"Expected mesh_info to be FSDPMeshInfo, got {type(self.mesh_info)}"
             )
-        return self.mesh_info.shard_process_group
+        # Falls back to the shard PG (shared with all-gather) unless
+        # set_separate_reduce_scatter_group opted in to a dedicated PG.
+        return (
+            self.mesh_info.reduce_scatter_process_group
+            or self.mesh_info.shard_process_group
+        )
+
+    def _set_separate_reduce_scatter_group(self, enable: bool) -> None:
+        # Give reduce-scatter its own process group (separate from the shared
+        # all-gather/shard PG) so the two can overlap in backward, or reset to
+        # the shared group. Creates one group per FSDP mesh over the shard ranks
+        # (dist.new_group is collective; call symmetrically), deduped per mesh so
+        # repeated calls do not leak communicators.
+        mesh_info = self.mesh_info
+        if not isinstance(mesh_info, FSDPMeshInfo):
+            raise AssertionError(
+                f"Expected mesh_info to be FSDPMeshInfo, got {type(mesh_info)}"
+            )
+        if not enable:
+            mesh_info.reduce_scatter_process_group = None
+        elif mesh_info.reduce_scatter_process_group is None:
+            mesh_info.reduce_scatter_process_group = dist.new_group(
+                dist.get_process_group_ranks(mesh_info.shard_process_group)
+            )
 
     @property
     def _all_reduce_process_group(self) -> dist.ProcessGroup:
