@@ -5226,7 +5226,6 @@ infinitely_differentiable_native_group_norm_backward(
     const c10::SymInt& C,
     const c10::SymInt& HxW,
     int64_t group,
-    double eps,
     std::array<bool, 3> grad_input_mask) {
   int64_t G = group;
   auto D = C / G;
@@ -5251,8 +5250,6 @@ infinitely_differentiable_native_group_norm_backward(
       // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
       gamma_tensor = gamma->reshape_symint({1, G, D, 1});
     }
-    const Tensor var =
-        ((rstd_tensor * rstd_tensor).reciprocal_() - eps).clamp_min(0);
     const Tensor rstd_cube = rstd_tensor * rstd_tensor * rstd_tensor;
     Tensor dvar;
     if (drstd.defined()) {
