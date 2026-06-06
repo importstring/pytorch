@@ -2475,7 +2475,7 @@ class GraphModule(torch.nn.Module):
             yield t.unsqueeze(-1).expand(4, 15, 10), False
             yield t.select(-1, 6), False
             # https://github.com/pytorch/pytorch/issues/128649
-            yield t[2:3, 5:9], dynamic
+            yield t[2:3, 5:9], False
             yield t.view(-1, 15), False
 
         def f(x):
@@ -2496,6 +2496,20 @@ class GraphModule(torch.nn.Module):
             else:
                 out_test = compiled_f(view)
                 self.assertEqual(out_ref, out_test)
+
+    def test_subclass_view_splits_dimension_mark_dynamic(self):
+        def f(x):
+            return x * 2
+
+        compiled_f = torch.compile(f, backend="aot_eager", fullgraph=True)
+
+        t = TwoTensor(torch.randn(4, 15), torch.randn(4, 15))
+        view = t.view(t.size(0), 3, 5)
+        torch._dynamo.mark_dynamic(view, 0)
+
+        out_ref = f(view)
+        out_test = compiled_f(view)
+        self.assertEqual(out_ref, out_test)
 
     @parametrize("dynamic", [True, False])
     def test_mark_static_with_subclass_desugaring(self, dynamic):
@@ -4373,102 +4387,114 @@ class GraphModule(torch.nn.Module):
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s20, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s20, s77)
+Eq(s64, s20)""",
                 )
             elif nt_view_name == "base_is_nt_False_leaf_False_False":
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s64, s77)""",
                 )
             elif nt_view_name == "base_is_nt_False_leaf_False_True":
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s20, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s20, s77)
+Eq(s64, s20)""",
                 )
             elif nt_view_name == "base_is_nt_False_leaf_True_False":
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s20, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s20, s77)
+Eq(s64, s20)""",
                 )
             elif nt_view_name == "base_is_nt_False_leaf_True_True":
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s20, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s20, s77)
+Eq(s64, s20)""",
                 )
             elif nt_view_name == "base_is_nt_False_obscure":
                 self.assertExpectedInline(
                     guard_str,
                     """\
-Eq(s85 - 1, s64)
-Eq(s20, s64)
-Eq(s80 - 1, s77)
-Eq(s72, s71)""",
+Eq(s85 - 1, s77)
+Eq(s20, s77)
+Eq(s64, s20)""",
                 )
             elif nt_view_name == "base_is_nt_True_basic":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s17 - 1, s83)
-Eq(s20, s83)""",
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s20, s77)
+Eq(s21, s20)""",
                 )
             elif nt_view_name == "base_is_nt_True_leaf_False_False":
                 self.assertExpectedInline(
                     guard_str,
-                    """Eq(s17 - 1, s83)""",
+                    """\
+Eq(s17 - 1, s83)
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s21, s77)""",
                 )
             elif nt_view_name == "base_is_nt_True_leaf_False_True":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s17 - 1, s83)
-Eq(s20, s83)""",
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s20, s77)
+Eq(s21, s20)""",
                 )
             elif nt_view_name == "base_is_nt_True_leaf_True_False":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s17 - 1, s83)
-Eq(s20, s83)""",
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s20, s77)
+Eq(s21, s20)""",
                 )
             elif nt_view_name == "base_is_nt_True_leaf_True_True":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s17 - 1, s83)
-Eq(s20, s83)""",
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s20, s77)
+Eq(s21, s20)""",
                 )
             elif nt_view_name == "base_is_nt_True_obscure":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s17 - 1, s83)
-Eq(s20, s83)""",
+Eq(s58, s21)
+Eq(s83, s77)
+Eq(s20, s77)
+Eq(s21, s20)""",
                 )
             elif nt_view_name == "dense_subclass_dense_subclass":
                 self.assertExpectedInline(
                     guard_str,
                     """\
 Eq(s85 - 1, s77)
-Eq(s80 - 1, s78)
-Eq(s72, s71)""",
+Eq(s64, s53)""",
                 )
             elif nt_view_name == "subclass_dense":
                 self.assertExpectedInline(
