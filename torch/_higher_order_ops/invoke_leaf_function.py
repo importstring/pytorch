@@ -49,6 +49,10 @@ def reset_makefx_module_storage() -> None:
 
 
 class _LeafCallable(OpaqueBase):
+    # invoke_leaf_function intentionally records compiler-owned callables as
+    # FX constants; they are not user data.
+    _allow_opaque_fx_constant = True
+
     def __init__(self, fn: Callable) -> None:
         self._fn = fn
 
