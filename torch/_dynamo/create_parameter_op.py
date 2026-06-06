@@ -24,7 +24,8 @@ class TracableCreateParameter(torch.autograd.Function):
     def forward(ctx: Any, tensor: Any, placeholder: Any) -> torch.nn.Parameter:
         if tensor.requires_grad:
             tensor = tensor.detach()
-        return placeholder.set_(tensor)
+        placeholder.set_(tensor)
+        return torch.nn.Parameter(placeholder, requires_grad=placeholder.requires_grad)
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: torch.Tensor) -> tuple[None, torch.Tensor]:
@@ -66,5 +67,22 @@ def do_not_convert_to_tracable_parameter() -> Generator[bool, None, None]:
         _TLS.convert_tracable_parameter = old_flag
 
 
+@contextmanager
+def allow_convert_to_tracable_parameter() -> Generator[bool, None, None]:
+    old_flag = getattr(_TLS, "convert_tracable_parameter", True)
+    old_force = getattr(_TLS, "force_tracable_parameter", False)
+    _TLS.convert_tracable_parameter = True
+    _TLS.force_tracable_parameter = True
+    try:
+        yield True
+    finally:
+        _TLS.convert_tracable_parameter = old_flag
+        _TLS.force_tracable_parameter = old_force
+
+
 def can_convert_to_tracable_parameter() -> bool:
     return getattr(_TLS, "convert_tracable_parameter", True)
+
+
+def force_tracable_parameter() -> bool:
+    return getattr(_TLS, "force_tracable_parameter", False)
