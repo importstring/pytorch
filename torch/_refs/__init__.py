@@ -3821,8 +3821,14 @@ def istft(
     else:
         end = expected_output_signal_len
 
-    y = aten.slice.Tensor(y, 1, start, end, 1)
-    window_envelop = aten.slice.Tensor(window_envelop, 1, start, end, 1)
+    # Clamp end to the valid signal range before slicing so that downstream
+    # meta / fake-tensor execution never sees an out-of-bounds access.
+    # The eager C++ path relies on slice's implicit clamping, but the
+    # compile path may convert slice to narrow which does not clamp.
+    clamped_end = min(end, expected_output_signal_len)
+
+    y = aten.slice.Tensor(y, 1, start, clamped_end, 1)
+    window_envelop = aten.slice.Tensor(window_envelop, 1, start, clamped_end, 1)
 
     y = y / window_envelop
     if original_ndim == 2:

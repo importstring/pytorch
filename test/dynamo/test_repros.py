@@ -7908,6 +7908,33 @@ SavedForBackwardsAOTOutput(idx=5)""",
         self.assertEqual(actual, expected)
         self.assertEqual(actual.shape, (3, length))
 
+    def test_issue179593_istft_compile_length_exceeds_signal(self):
+        n_fft = 1024
+        hop_length = 512
+        length = 51712
+
+        def fn(spec, window):
+            return torch.istft(
+                spec,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                window=window,
+                length=length,
+            )
+
+        spec = torch.view_as_complex(
+            torch.randn(16, n_fft // 2 + 1, 100, 2)
+        )
+        window = torch.hann_window(n_fft)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            expected = fn(spec, window)
+            actual = torch.compile(fn, backend="eager", fullgraph=True)(spec, window)
+
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual.shape, (16, length))
+
     @unittest.expectedFailure
     def test_method_dunder_dict_setitem(self):
         # Reproducer for: getattr(obj, method_name).__dict__['key'] = value
