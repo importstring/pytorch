@@ -7922,9 +7922,7 @@ SavedForBackwardsAOTOutput(idx=5)""",
                 length=length,
             )
 
-        spec = torch.view_as_complex(
-            torch.randn(16, n_fft // 2 + 1, 100, 2)
-        )
+        spec = torch.view_as_complex(torch.randn(16, n_fft // 2 + 1, 100, 2))
         window = torch.hann_window(n_fft)
 
         with warnings.catch_warnings():
