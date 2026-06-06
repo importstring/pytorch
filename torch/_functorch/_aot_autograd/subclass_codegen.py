@@ -65,6 +65,41 @@ class _CodegenState:
         return name
 
 
+def _is_async_collective_tensor_type(tp: object) -> bool:
+    """True if ``tp`` is ``AsyncCollectiveTensor`` (without an eager import)."""
+    try:
+        from torch.distributed._functional_collectives import AsyncCollectiveTensor
+    except Exception:
+        return False
+    return tp is AsyncCollectiveTensor
+
+
+def _emit_subclass_symints(
+    state: _CodegenState,
+    meta: SubclassCreationMeta,
+    var: str,
+    indent: int,
+    include_symints: bool,
+) -> None:
+    """Emit symint extraction for one subclass level from ``var``."""
+    if not include_symints:
+        return
+    size_placeholders = _compute_placeholders(meta.outer_size)
+    stride_placeholders = _compute_placeholders(meta.outer_stride)
+    if any(size_placeholders) or any(stride_placeholders):
+        size_var = state.fresh_name("_size")
+        state.emit(f"{size_var} = {var}.size()", indent=indent)
+        for i, is_sym in enumerate(size_placeholders):
+            if is_sym:
+                state.emit(f"unwrapped_args.append({size_var}[{i}])", indent=indent)
+
+        stride_var = state.fresh_name("_stride")
+        state.emit(f"{stride_var} = {var}.stride()", indent=indent)
+        for i, is_sym in enumerate(stride_placeholders):
+            if is_sym:
+                state.emit(f"unwrapped_args.append({stride_var}[{i}])", indent=indent)
+
+
 def _codegen_unwrap_subclass(
     state: _CodegenState,
     meta: SubclassCreationMeta,
@@ -85,35 +120,55 @@ def _codegen_unwrap_subclass(
                 state.emit(
                     f"{inner_var} = {_safe_attr_access(var, attr)}", indent=indent
                 )
-                _codegen_unwrap_subclass(
-                    state,
-                    attr_meta,
-                    inner_var,
-                    indent=indent,
-                    include_symints=include_symints,
+                inner_type = attr_meta.original_subclass_type or type(
+                    attr_meta.original_subclass
                 )
-
-    # Emit symint extraction
-    if include_symints:
-        size_placeholders = _compute_placeholders(meta.outer_size)
-        stride_placeholders = _compute_placeholders(meta.outer_stride)
-        has_size_symints = any(size_placeholders)
-        has_stride_symints = any(stride_placeholders)
-
-        if has_size_symints or has_stride_symints:
-            size_var = state.fresh_name("_size")
-            state.emit(f"{size_var} = {var}.size()", indent=indent)
-            for i, is_sym in enumerate(size_placeholders):
-                if is_sym:
-                    state.emit(f"unwrapped_args.append({size_var}[{i}])", indent=indent)
-
-            stride_var = state.fresh_name("_stride")
-            state.emit(f"{stride_var} = {var}.stride()", indent=indent)
-            for i, is_sym in enumerate(stride_placeholders):
-                if is_sym:
-                    state.emit(
-                        f"unwrapped_args.append({stride_var}[{i}])", indent=indent
+                if _is_async_collective_tensor_type(inner_type):
+                    # AsyncCollectiveTensor (ACT) wraps the still-in-flight
+                    # output of an async functional collective and collapses to
+                    # its plain inner tensor the first time it is waited. So a
+                    # nested ACT (e.g. DTensor._local_tensor after an async
+                    # collective) may already be a plain tensor at runtime even
+                    # though it was an ACT at trace time -- the recorded type can
+                    # differ from the runtime value. Resolve it with
+                    # trigger_wait(), which both waits the collective and returns
+                    # the inner tensor, instead of statically unwrapping
+                    # ``.elem``: the latter raised
+                    # ``'Tensor' object has no attribute 'elem'`` when the
+                    # runtime value was already plain, and skipped the wait
+                    # entirely (reading in-flight data) when it was still an ACT.
+                    # ACT flattens to a single inner ("elem") that
+                    # trigger_wait() returns, so no further recursion is needed.
+                    if len(attr_meta.attrs) != 1 or isinstance(
+                        next(iter(attr_meta.attrs.values())), SubclassCreationMeta
+                    ):
+                        raise AssertionError(
+                            f"unexpected AsyncCollectiveTensor layout: "
+                            f"{attr_meta.attrs}"
+                        )
+                    act_name = state.add_global(
+                        state.fresh_name("_act_type"), inner_type
                     )
+                    resolved = state.fresh_name("_resolved")
+                    state.emit(
+                        f"{resolved} = {inner_var}.trigger_wait() "
+                        f"if type({inner_var}) is {act_name} else {inner_var}",
+                        indent=indent,
+                    )
+                    state.emit(f"unwrapped_args.append({resolved})", indent=indent)
+                    _emit_subclass_symints(
+                        state, attr_meta, resolved, indent, include_symints
+                    )
+                else:
+                    _codegen_unwrap_subclass(
+                        state,
+                        attr_meta,
+                        inner_var,
+                        indent=indent,
+                        include_symints=include_symints,
+                    )
+
+    _emit_subclass_symints(state, meta, var, indent, include_symints)
 
 
 def _concrete_value(val: None | int | SymInt) -> int:
