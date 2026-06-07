@@ -4015,6 +4015,9 @@ class InstructionTranslatorBase(
             defaults,
             kwdefaults,
             closure,
+            is_dynamo_polyfill_function=getattr(
+                self, "is_inlining_dynamo_polyfill", False
+            ),
         )
         if annotations:
             if not isinstance(annotations, TupleVariable):
@@ -5538,8 +5541,13 @@ class InstructionTranslator(InstructionTranslatorBase):
             and (tos := self.stack[-1])
             and isinstance(tos, LocalGeneratorObjectVariable)
         ):
+            from torch._dynamo.side_effects import disallow_side_effects_in_generator
+
+            tensor_only = tos.is_dynamo_polyfill
+            with disallow_side_effects_in_generator(self, tensor_only=tensor_only):
+                remaining_items = unpack_iterable(self, tos)
             self.stack[-1] = ListIteratorVariable(
-                unpack_iterable(self, tos),
+                remaining_items,
                 mutation_type=ValueMutationNew(),
             )
 
@@ -6087,6 +6095,11 @@ class InliningInstructionTranslator(InstructionTranslatorBase):
             indexof=indexof,
         )
         self.funcvar = funcvar
+        self.is_inlining_dynamo_polyfill = (
+            funcvar.is_dynamo_polyfill()
+            if isinstance(funcvar, BaseUserFunctionVariable)
+            else getattr(funcvar, "is_dynamo_polyfill", False)
+        )
         self.parent = parent
         self.num_calls = parent.num_calls
         self.symbolic_result = None
