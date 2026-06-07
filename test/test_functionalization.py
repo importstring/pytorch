@@ -193,6 +193,20 @@ class TestFunctionalization(TestCase):
         )
         self.assertEqual(r.stride(), (5, 1))
 
+    def test_inplace_on_strided_input_preserves_stride_for_as_strided(self):
+        def f(x):
+            x.add_(1)
+            return torch.as_strided_copy(x, (3,), (2,))
+
+        x_ref = torch.arange(10)[::2]
+        x_test = torch.arange(10)[::2]
+
+        out_ref = f(x_ref)
+        out_test = _functionalize(f, reapply_views=True, crossref=self.crossref)(x_test)
+
+        self.assertEqual(out_ref, out_test)
+        self.assertEqual(x_ref, x_test)
+
     def test_set_(self):
         def f(x):
             y = torch.ones(2)
@@ -600,8 +614,9 @@ def forward(self, arg0_1):
 
 def forward(self, arg0_1):
     as_strided = torch.ops.aten.as_strided.default(arg0_1, [2], [2], 1)
-    add = torch.ops.aten.add.Tensor(as_strided, 1);  as_strided = None
-    as_strided_scatter = torch.ops.aten.as_strided_scatter.default(arg0_1, add, [2], [2], 1);  add = None
+    add = torch.ops.aten.add.Tensor(as_strided, 1)
+    copy = torch.ops.aten.copy.default(as_strided, add);  as_strided = add = None
+    as_strided_scatter = torch.ops.aten.as_strided_scatter.default(arg0_1, copy, [2], [2], 1);  copy = None
     as_strided_1 = torch.ops.aten.as_strided.default(as_strided_scatter, [2], [2], 1);  as_strided_1 = None
     copy_ = torch.ops.aten.copy_.default(arg0_1, as_strided_scatter);  arg0_1 = copy_ = None
     return as_strided_scatter
