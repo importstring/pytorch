@@ -1,7 +1,14 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 // ${generated_comment}
 
-#include <Python.h>
+#if defined(_MSC_VER) && defined(_DEBUG) && !defined(Py_DEBUG)
+#  pragma push_macro("_DEBUG")
+#  undef _DEBUG
+#  include <Python.h>
+#  pragma pop_macro("_DEBUG")
+#else
+#  include <Python.h>
+#endif
 
 // Undefine the copysign macro so that at::copysign works as intended with MSVC
 // https://github.com/python/cpython/blob/c60394c7fc9cc09b16e9675a3eeb5844b6d8523f/PC/pyconfig.h#L196

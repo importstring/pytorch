@@ -13,7 +13,14 @@
 #include <torch/csrc/dynamo/python_compiled_autograd.h>
 #include <torch/csrc/utils/python_numbers.h>
 
-#include <Python.h>
+#if defined(_MSC_VER) && defined(_DEBUG) && !defined(Py_DEBUG)
+#  pragma push_macro("_DEBUG")
+#  undef _DEBUG
+#  include <Python.h>
+#  pragma pop_macro("_DEBUG")
+#else
+#  include <Python.h>
+#endif
 
 static struct PyModuleDef _module =
     {PyModuleDef_HEAD_INIT, "torch._C._dynamo", "", -1, nullptr};

@@ -24,7 +24,14 @@
 #include <ATen/native/Resize.h>
 #include <ATen/ops/from_blob.h>
 
-#include <Python.h>
+#if defined(_MSC_VER) && defined(_DEBUG) && !defined(Py_DEBUG)
+#  pragma push_macro("_DEBUG")
+#  undef _DEBUG
+#  include <Python.h>
+#  pragma pop_macro("_DEBUG")
+#else
+#  include <Python.h>
+#endif
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <utility>

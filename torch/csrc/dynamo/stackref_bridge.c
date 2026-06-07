@@ -11,7 +11,14 @@
 #if IS_PYTHON_3_14_PLUS
 
 #define Py_BUILD_CORE
-#include <Python.h>
+#if defined(_MSC_VER) && defined(_DEBUG) && !defined(Py_DEBUG)
+#  pragma push_macro("_DEBUG")
+#  undef _DEBUG
+#  include <Python.h>
+#  pragma pop_macro("_DEBUG")
+#else
+#  include <Python.h>
+#endif
 #include <internal/pycore_stackref.h>
 #include <torch/csrc/dynamo/stackref_bridge.h>
 #undef Py_BUILD_CORE
