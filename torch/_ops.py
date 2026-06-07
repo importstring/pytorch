@@ -1008,8 +1008,33 @@ class OpOverload(OperatorBase, Generic[_P, _T]):
 
         final_key = resolve_key(self, key)
 
+        backend_autograd_python_kernel = (
+            functionality_key == DispatchKey.AutogradFunctionality
+            and torch._C._to_functionality_key(final_key)  # type: ignore[attr-defined]
+            == DispatchKey.AutogradFunctionality
+            and final_key != DispatchKey.Autograd
+            and final_key in self.py_kernels
+        )
+
+        if (
+            backend_autograd_python_kernel
+            and not torch._C._dispatch_tls_is_dispatch_key_excluded(DispatchKey.Python)
+        ):
+            from torch._subclasses.fake_tensor import FakeTensorMode
+            from torch._subclasses.functional_tensor import FunctionalTensorMode
+            from torch.utils._python_dispatch import _get_current_dispatch_mode
+
+            if isinstance(
+                _get_current_dispatch_mode(), (FakeTensorMode, FunctionalTensorMode)
+            ):
+                return lambda *args, **kwargs: self._op_dk(
+                    DispatchKey.Autograd, *args, **kwargs
+                )
+
         # See Note [Not Caching Per-Dispatch-Key Mode Handlers]
-        cache_result = key != DispatchKey.PreDispatch
+        cache_result = (
+            key != DispatchKey.PreDispatch and not backend_autograd_python_kernel
+        )
 
         # TODO: We could potentially have lots of debugging wrappers against
         # dispatch keys; design some general registration mechanism instead of
