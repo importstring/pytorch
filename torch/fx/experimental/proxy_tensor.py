@@ -52,6 +52,7 @@ from torch._logging import trace_structured
 from torch._ops import HigherOrderOperator, OpOverload
 from torch._subclasses.fake_impls import fast_detach
 from torch._subclasses.fake_tensor import (
+    CONSTANT_NUMEL_LIMIT,
     FakeTensor,
     FakeTensorMode,
     get_plain_tensors,
@@ -120,8 +121,6 @@ prim = torch.ops.prim
 
 log = logging.getLogger(__name__)
 not_implemented_log = torch._logging.getArtifactLogger(__name__, "not_implemented")
-
-CONSTANT_NUMEL_LIMIT = 1
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -1330,6 +1329,9 @@ def proxy_call(
             constant = args[0].clone()
     elif (
         torch.Tag.nondeterministic_seeded not in func.tags
+        and not func.name().startswith(
+            "device_mesh::_runtime_compute_coordinate_on_dim"
+        )
         and all_constant
         and any_constant
         and pytree.tree_all_only(Tensor, tensor_numel_in_limit, out)

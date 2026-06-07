@@ -210,9 +210,10 @@ class FakeTensorTest(TestCase):
             self.skipTest("propagate_real_tensors resolves the real nnz")
 
         with FakeTensorMode(allow_non_fake_inputs=True, shape_env=ShapeEnv()) as mode:
-            out = torch.sparse.spdiags(
-                torch.randn(2, 100), torch.tensor([-1, -2]), (100, 2)
+            dynamic_offsets = mode.fake_tensor_converter.from_real_tensor(
+                mode, torch.tensor([-1, -2]), make_constant=False
             )
+            out = torch.sparse.spdiags(torch.randn(2, 100), dynamic_offsets, (100, 2))
 
         nnz = out._values().shape[0]
         nnz_range = mode.shape_env.var_to_range[nnz.node.expr]
@@ -1951,14 +1952,12 @@ class FakeTensorConstHandling(TestCase):
             batch_shape = [len(tensors)] + list(tensors[0].shape[:-2]) + list(max_size)
             return tensors[0].new_full(batch_shape, 0.0)
 
-        with self.assertRaises(
-            torch._subclasses.fake_tensor.DataDependentOutputException
-        ):
-            with torch._subclasses.fake_tensor.FakeTensorMode():
-                a = torch.randn(3, 800, 1199)
-                b = torch.randn(3, 800, 800)
-                inputs = [a, b]
-                ref = fn(inputs)
+        with torch._subclasses.fake_tensor.FakeTensorMode():
+            a = torch.randn(3, 800, 1199)
+            b = torch.randn(3, 800, 800)
+            inputs = [a, b]
+            ref = fn(inputs)
+            self.assertEqual(ref.shape, torch.Size([2, 3, 800, 1216]))
 
     def test_fake_tensor_batch_norm_cpu(self):
         with torch._subclasses.CrossRefFakeMode():
@@ -1980,7 +1979,7 @@ class FakeTensorConstHandling(TestCase):
     def test_aliased_const_write(self):
         with FakeTensorMode():
             x = torch.tensor([1])
-            y = x.expand([4])
+            y = x.expand([torch._subclasses.fake_tensor.CONSTANT_NUMEL_LIMIT + 1])
             self.assertNotConst(y)
             y[0] = 1
             self.assertNotConst(x)

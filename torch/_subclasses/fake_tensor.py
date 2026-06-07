@@ -82,7 +82,9 @@ T = TypeVar("T")
 
 aten = torch._ops.ops.aten
 
-CONSTANT_NUMEL_LIMIT = 1
+# Keep small tensors constant so shape tensors built during tracing preserve
+# their values through downstream scalar uses such as item() or SymInt args.
+CONSTANT_NUMEL_LIMIT = 8
 
 RECURSION_COUNT = 0
 
@@ -2615,6 +2617,9 @@ class FakeTensorMode(TorchDispatchMode):
             # and constants are used purely for their values, not autograd.
             and (
                 torch.Tag.inplace_view not in func.tags or func is aten.detach_.default
+            )
+            and not func.name().startswith(
+                "device_mesh::_runtime_compute_coordinate_on_dim"
             )
             and all_constant
             and len(flat_arg_fake_tensors) != 0
