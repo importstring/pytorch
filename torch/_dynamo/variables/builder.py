@@ -197,6 +197,7 @@ from ..utils import (
 from .base import (
     AttributeMutationExisting,
     AttributeMutationNew,
+    NO_SUCH_SUBOBJ,
     typestr,
     ValueMutationExisting,
     ValueMutationNew,
@@ -1309,7 +1310,7 @@ class VariableBuilder:
             )
         elif np is not None and isinstance(value, np.generic):
             # numpy array scalars: convert to 0D arrays
-            return self.wrap_numpy_ndarray(np.asarray(value))
+            return self.wrap_numpy_ndarray(np.asarray(value), python_value=value)
         elif trace_rules.is_numpy(value):
             if not np:
                 raise AssertionError("numpy must be available for numpy tracing")
@@ -2979,7 +2980,9 @@ class VariableBuilder:
         tensor_proxy.node.meta["grapharg"] = grapharg
         return tensor_variable
 
-    def wrap_numpy_ndarray(self, value: Any) -> VariableTracker:
+    def wrap_numpy_ndarray(
+        self, value: Any, python_value: Any = NO_SUCH_SUBOBJ
+    ) -> VariableTracker:
         if np is None:
             raise AssertionError("numpy must be available to wrap ndarray")
         if not isinstance(value, np.ndarray):
@@ -3038,7 +3041,11 @@ class VariableBuilder:
             source=source,
         )
         cache_real_value_when_export(self.tx, proxy, tensor_value)
-        options = {"source": source}
+        options = {
+            "source": source,
+            "is_numpy_ndarray": python_value is NO_SUCH_SUBOBJ,
+            "python_value": python_value,
+        }
         numpy_ndarray_variable = wrap_fx_proxy_cls(
             target_cls=NumpyNdarrayVariable,
             tx=self.tx,
