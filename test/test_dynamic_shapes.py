@@ -1579,7 +1579,7 @@ class f(torch.nn.Module):
         from torch._dynamo.source import EphemeralSource
 
         for construct_ephemeral_first in (False, True):
-            shape_env = ShapeEnv()
+            shape_env = ShapeEnv(duck_shape=True)
             shape = (5, 10)
             # use duck sizing here to ensure symbol reuse across x and y
             duck_dims = [DimDynamic.DUCK for _ in shape]

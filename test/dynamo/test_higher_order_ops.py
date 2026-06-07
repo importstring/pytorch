@@ -2146,8 +2146,9 @@ def forward(self, child : torch.Tensor, const_unused : int):
                 and node.target == torch.ops.higher_order.cond
             ):
                 _, _, _, operands = node.args
-                # Since we compile with dynamic, each branch takes 4 inputs (buffer, x, z, s1)
-                self.assertEqual(len(operands), 4)
+                # Since we compile with dynamic and duck sizing is off by
+                # default, each branch takes 5 inputs (buffer, x, z, s1, s2).
+                self.assertEqual(len(operands), 5)
             if node.op == "get_attr":
                 if str(node.target) in ("cond_true_0, cond_false_0"):
                     num_placeholders = len(
@@ -2159,7 +2160,7 @@ def forward(self, child : torch.Tensor, const_unused : int):
                             if node.op == "placeholder"
                         ]
                     )
-                    self.assertEqual(num_placeholders, 4)
+                    self.assertEqual(num_placeholders, 5)
 
     def _check_cond_graph_and_extract(self, fn, args):
         backend = EagerAndRecordGraphs()
