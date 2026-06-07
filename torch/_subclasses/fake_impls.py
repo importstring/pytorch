@@ -2060,9 +2060,12 @@ def fast_detach(
 ) -> FakeTensor:
     with no_python_dispatcher(), in_kernel_invocation_manager(fake_mode):
         out = torch.ops.aten.detach.default(x)
-    if include_real:
-        return FakeTensor(fake_mode, out, x.device, real_tensor=x.real_tensor)
-    return FakeTensor(fake_mode, out, x.device)
+    with torch._C._ExcludeDispatchKeyGuard(
+        torch._C.DispatchKeySet(torch._C.DispatchKey.PreDispatch)
+    ):
+        if include_real:
+            return FakeTensor(fake_mode, out, x.device, real_tensor=x.real_tensor)
+        return FakeTensor(fake_mode, out, x.device)
 
 
 @functools.cache
