@@ -14700,6 +14700,38 @@ fn
 
         self.assertEqual(expected, actual)
 
+    def test_data_ptr_tensor_constructor_fullgraph(self):
+        class CaptureGraph:
+            def __init__(self):
+                self.graph = None
+
+            def __call__(self, gm, example_inputs):
+                self.graph = gm
+                return gm
+
+        def f(x, y):
+            return torch.tensor([x.data_ptr(), y.data_ptr()], device=x.device)
+
+        backend = CaptureGraph()
+        x = torch.randn(4)
+        y = torch.randn(5)
+
+        expected = f(x, y)
+        actual = torch.compile(f, backend=backend, fullgraph=True)(x, y)
+
+        self.assertEqual(expected, actual)
+        self.assertIsNotNone(backend.graph)
+        FileCheck().check("torch.ops.prims._data_ptr.default").run(backend.graph.code)
+
+    def test_const_data_ptr_tensor_constructor_unsupported(self):
+        def f(x):
+            return torch.tensor([x.const_data_ptr()])
+
+        x = torch.randn(4)
+
+        with self.assertRaises(torch._dynamo.exc.Unsupported):
+            torch.compile(f, backend="eager", fullgraph=True)(x)
+
     def test_data_ptr_equality_after_mutation_graph_break(self):
         def f(x):
             ptr_before = x.data_ptr()

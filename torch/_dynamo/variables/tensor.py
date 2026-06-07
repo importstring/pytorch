@@ -3224,6 +3224,19 @@ class DataPtrVariable(VariableTracker):
     def python_type(self) -> type:
         return int
 
+    def as_sym_node(self, tx: "InstructionTranslatorBase") -> VariableTracker:
+        if self.method_name != "data_ptr":
+            raise AssertionError(self.method_name)
+        from ..data_ptr_op import _data_ptr
+
+        proxy = tx.output.create_proxy(
+            "call_function",
+            _data_ptr,
+            (self.from_tensor.as_proxy(),),
+            {},
+        )
+        return SymNodeVariable.create(tx, proxy)
+
     @classmethod
     def _strip_data_ptr_preserving_aliases(cls, node: torch.fx.Node) -> torch.fx.Node:
         while (
