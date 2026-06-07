@@ -1506,9 +1506,12 @@ std::tuple<Tensor, Tensor, Tensor, Tensor, c10::SymInt, c10::SymInt> _efficient_
       offset_t = at::scalar_tensor(at::Scalar(static_cast<int64_t>(offset)), options);
     }
   } else {
-    // Not using dropout
-    seed_t = at::empty({}, at::dtype(at::kLong).device(device));
-    offset_t = at::empty({}, at::dtype(at::kLong).device(device));
+    // Not using dropout. AOTAutograd may still save these dummy tensors, and
+    // ROCm attention backends may read their pointers. Keep their device
+    // independent of CUDA graph capture and their value deterministic.
+    const auto options = query.options().dtype(at::kLong);
+    seed_t = at::zeros({}, options);
+    offset_t = at::zeros({}, options);
   }
 
 #ifdef USE_ROCM
@@ -1608,9 +1611,15 @@ std::tuple<Tensor, Tensor, Tensor, Tensor, c10::SymInt, c10::SymInt> _efficient_
     aotriton::TensorView<4> empty_t4(0, {0, 0, 0, 0}, {0, 0, 0, 0}, aotriton::DType::kFloat16);
     aotriton::TensorView<2> empty_t2(0, {0, 0}, {0, 0}, aotriton::DType::kFloat32);
     at::Tensor softmax_fa_t = at::empty({ 0, 0, 0, 0 }, query.options());
-    const bool use_philox_state = in_capture_stream;
-    auto seed = use_philox_state ? mk_philoxtensor(philox_state.seed_.ptr) : mk_aoscalartensor(seed_t);
-    auto offset1 = use_philox_state ? mk_philoxtensor(philox_state.offset_.ptr) : mk_aoscalartensor(offset_t);
+    const bool use_philox_state = use_dropout && in_capture_stream;
+    auto seed = use_dropout
+        ? (use_philox_state ? mk_philoxtensor(philox_state.seed_.ptr)
+                            : mk_aoscalartensor(seed_t))
+        : mk_philoxtensor(nullptr);
+    auto offset1 = use_dropout
+        ? (use_philox_state ? mk_philoxtensor(philox_state.offset_.ptr)
+                            : mk_aoscalartensor(offset_t))
+        : mk_philoxtensor(nullptr);
     auto offset2 = use_philox_state ? philox_state.offset_intragraph_ : 0;
     auto seed_output = mk_philoxtensor(use_philox_state ? seed_t.data_ptr<int64_t>() : nullptr);
     auto offset_output = mk_philoxtensor(use_philox_state ? offset_t.data_ptr<int64_t>() : nullptr);
