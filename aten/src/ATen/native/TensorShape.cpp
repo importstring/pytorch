@@ -2010,7 +2010,8 @@ Tensor reshape_symint(const Tensor& self, c10::SymIntArrayRef proposed_shape) {
     TORCH_CHECK(false, "reshape is not implemented for sparse tensors");
   }
 
-  if (self.is_contiguous_or_false() && !self.is_mkldnn()) {
+  if (self.sym_is_contiguous().statically_known_true(__FILE__, __LINE__) &&
+      !self.is_mkldnn()) {
     return self.view_symint(proposed_shape);
   }
 
@@ -2066,7 +2067,7 @@ Tensor _reshape_copy_symint(
     TORCH_CHECK(0, "_reshape_copy not implemented for mkldnn tensors");
   }
 
-  if (self.is_contiguous_or_false()) {
+  if (self.sym_is_contiguous().statically_known_true(__FILE__, __LINE__)) {
     return self.view_symint(shape).clone(at::MemoryFormat::Contiguous);
   } else {
     return at::_unsafe_view_symint(
@@ -4135,6 +4136,36 @@ Tensor flatten(const Tensor& self, int64_t start_dim, int64_t end_dim) {
   shape.push_back(slice_numel);
   for (const auto i : c10::irange(end_dim + 1, self.dim())) {
     shape.push_back(self.sym_sizes()[i]);
+  }
+
+  // Flattening a range with only one non-size-one dimension is always a view,
+  // even when the non-size-one dimension is symbolic. Handle this directly so
+  // reshape viewability does not need to specialize on size-like symbols.
+  int64_t non_size_one_dim = -1;
+  bool has_direct_view = true;
+  for (const auto i : c10::irange(start_dim, end_dim + 1)) {
+    if (TORCH_STATICALLY_KNOWN_TRUE(self.sym_sizes()[i].sym_eq(1))) {
+      continue;
+    }
+    if (non_size_one_dim != -1) {
+      has_direct_view = false;
+      break;
+    }
+    non_size_one_dim = i;
+  }
+  if (has_direct_view) {
+    c10::SymDimVector strides;
+    strides.reserve(shape.size());
+    for (const auto i : c10::irange(start_dim)) {
+      strides.push_back(self.sym_strides()[i]);
+    }
+    strides.push_back(
+        non_size_one_dim == -1 ? c10::SymInt(1)
+                               : self.sym_strides()[non_size_one_dim]);
+    for (const auto i : c10::irange(end_dim + 1, self.dim())) {
+      strides.push_back(self.sym_strides()[i]);
+    }
+    return self.as_strided_symint(shape, strides);
   }
 
   return native::reshape_symint(self, shape);
